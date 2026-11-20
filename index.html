@@ -1,0 +1,3464 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>카지노 서바이벌 게임</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            overflow: hidden;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        /* 릴 돌아가는 부드러운 애니메이션 스타일 */
+        .reel-blur {
+            filter: blur(4px);
+            transition: all 0.1s ease-in-out;
+        }
+
+        /* 지평선 아래 요소 마스킹 처리 (기능 4) */
+        .horizon-clip {
+            clip-path: inset(0 0 25% 0);
+        }
+
+        /* 은은하게 깜빡이는 문구 애니메이션 */
+        @keyframes sleepPulse {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+
+        .animate-sleep-pulse {
+            animation: sleepPulse 1.5s ease-in-out infinite;
+        }
+
+        /* 가이드의 키보드 키 모양 */
+        .kbd {
+            display: inline-flex; align-items: center; justify-content: center;
+            min-width: 1.75rem; height: 1.75rem; padding: 0 0.45rem;
+            border-radius: 0.4rem; border: 1px solid #475569; border-bottom-width: 3px;
+            background: #1e293b; color: #f1f5f9; font-size: 0.75rem; font-weight: 800;
+        }
+    </style>
+</head>
+<body class="bg-[#031841] text-slate-100 min-h-screen flex flex-col justify-between select-none relative">
+
+    <!-- [기능 6] 시작 화면 오버레이 -->
+    <div id="start-screen" class="fixed inset-0 bg-[#031841] z-[200] flex flex-col items-center justify-center p-4">
+        <!-- 세로로 긴 둥근 직사각형 카드 -->
+        <div class="bg-slate-900/90 border border-slate-700/80 rounded-3xl p-8 shadow-2xl flex flex-col justify-between items-center text-center backdrop-blur-md" style="width: min(90vw, 360px); height: min(80vh, 520px);">
+            <!-- 상단: 제목 -->
+            <div class="pt-4">
+                <h1 class="text-4xl font-black tracking-wider text-amber-400 drop-shadow-md">운빨망겜</h1>
+                <p class="text-xs text-slate-400 mt-2">웹 카지노 서바이벌</p>
+            </div>
+
+            <!-- 중간: 시작하기 큰 버튼 -->
+            <div class="w-full my-auto">
+                <button onclick="startGameFromMenu()" class="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 active:scale-95 text-slate-950 font-black py-4 rounded-2xl text-xl shadow-lg transition-all duration-150">
+                    시작하기
+                </button>
+            </div>
+
+            <!-- 하단: 게임 가이드 버튼 -->
+            <div class="w-full pb-2">
+                <button onclick="openGuideModal()" class="w-full bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 font-bold py-2.5 rounded-xl text-sm transition-all duration-150 border border-slate-700">
+                    게임 가이드
+                </button>
+            </div>
+        </div>
+
+        <!-- 카드 바깥 아래쪽 최고 기록 표시 -->
+        <div id="start-screen-best" class="mt-6 text-sm text-slate-400 font-medium hidden">
+            최고 기록: <span id="start-best-day" class="text-amber-400 font-bold">1일차</span>
+        </div>
+    </div>
+
+    <!-- [기능 6] 게임 시작 페이드/로딩 연출 오버레이 -->
+    <div id="game-start-overlay" class="fixed inset-0 bg-black z-[180] hidden opacity-0 transition-opacity duration-500 flex items-center justify-center pointer-events-none">
+        <div class="text-white text-2xl font-bold tracking-widest animate-sleep-pulse">
+            도박장으로 이동중...
+        </div>
+    </div>
+
+    <!-- 상단 바 (검은색 바) -->
+    <header class="w-full bg-black text-white px-6 py-4 flex items-center justify-between shadow-lg relative z-10 border-b border-slate-800">
+        <!-- 왼쪽: 소지금$ / 오늘 필요 금액$ -->
+        <div class="text-lg font-bold">
+            <span id="current-money-left" class="text-emerald-400">1,000</span>$ / <span id="target-money" class="text-amber-400">1,000</span>$
+        </div>
+        
+        <!-- 상단 바 중앙: 실제 일차 (N일차) -->
+        <div class="absolute left-1/2 transform -translate-x-1/2 text-lg font-semibold tracking-wide flex items-baseline gap-1">
+            <span id="day-display" class="text-amber-400 font-bold text-xl">1일차</span>
+        </div>
+
+        <!-- 오른쪽: 소지금 (동기화) -->
+        <div class="text-lg font-bold text-emerald-400">
+            소지금: <span id="current-money-right" class="text-emerald-400">1,000</span>$
+        </div>
+    </header>
+
+    <!-- 메인 컨텐츠 영역 (게임 필드) -->
+    <main id="game-area" class="relative flex-1 w-full h-full overflow-hidden">
+        
+        <!-- 왼쪽 하단: 오늘 플레이한 게임 횟수 / 하루를 끝내는 데 필요한 횟수 -->
+        <div class="absolute bottom-6 left-6 text-sm bg-slate-900/80 px-4 py-2 rounded-lg border border-slate-700 opacity-90 text-slate-200 font-medium z-10 flex items-center gap-2 shadow-lg">
+            <span>🎮 오늘 판수:</span>
+            <span id="play-count-left" class="text-amber-400 font-bold">0</span> / <span id="play-count-max" class="text-slate-400">3</span>
+        </div>
+
+        <!-- 일차 전환 시 나타나는 토스트 알림 메시지 -->
+        <div id="day-toast" class="absolute top-8 left-1/2 -translate-x-1/2 bg-amber-500/90 text-slate-950 font-extrabold text-xl px-8 py-3 rounded-full shadow-2xl opacity-0 pointer-events-none transition-all duration-500 z-30 transform -translate-y-4">
+            <span id="day-toast-text">1일차 시작!</span>
+        </div>
+
+        <!-- 맵 상징물 3종 (슬롯머신, 블랙잭, 룰렛) -->
+        <div id="buildings-container">
+            <!-- 슬롯머신 -->
+            <div id="building-slot" class="absolute flex flex-col items-center transform -translate-x-1/2 -translate-y-1/2 transition-transform hover:scale-105" style="left: 20%; top: 25%;">
+                <div class="text-5xl drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)]">🎰</div>
+                <div class="mt-2 bg-slate-900/90 border border-amber-400/50 text-amber-300 text-xs px-3 py-1 rounded-full font-bold shadow-md">슬롯머신</div>
+                <!-- 상징물 하단 E 키 알림 프롬프트 -->
+                <div class="prompt-badge mt-2 bg-amber-400 text-slate-950 text-xs font-black px-2.5 py-1 rounded-md shadow-lg whitespace-nowrap animate-bounce hidden">
+                    E 키로 시작
+                </div>
+            </div>
+
+            <!-- 블랙잭 -->
+            <div id="building-blackjack" class="absolute flex flex-col items-center transform -translate-x-1/2 -translate-y-1/2 transition-transform hover:scale-105" style="left: 40%; top: 25%;">
+                <div class="text-5xl drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)]">🃏</div>
+                <div class="mt-2 bg-slate-900/90 border border-blue-400/50 text-blue-300 text-xs px-3 py-1 rounded-full font-bold shadow-md">블랙잭</div>
+                <!-- 상징물 하단 E 키 알림 프롬프트 -->
+                <div class="prompt-badge mt-2 bg-amber-400 text-slate-950 text-xs font-black px-2.5 py-1 rounded-md shadow-lg whitespace-nowrap animate-bounce hidden">
+                    E 키로 시작
+                </div>
+            </div>
+
+            <!-- 룰렛 -->
+            <div id="building-roulette" class="absolute flex flex-col items-center transform -translate-x-1/2 -translate-y-1/2 transition-transform hover:scale-105" style="left: 60%; top: 25%;">
+                <div class="text-5xl drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)]">🎡</div>
+                <div class="mt-2 bg-slate-900/90 border border-red-400/50 text-red-300 text-xs px-3 py-1 rounded-full font-bold shadow-md">룰렛</div>
+                <!-- 상징물 하단 E 키 알림 프롬프트 -->
+                <div class="prompt-badge mt-2 bg-amber-400 text-slate-950 text-xs font-black px-2.5 py-1 rounded-md shadow-lg whitespace-nowrap animate-bounce hidden">
+                    E 키로 시작
+                </div>
+            </div>
+
+            <!-- 홀덤 -->
+            <div id="building-holdem" class="absolute flex flex-col items-center transform -translate-x-1/2 -translate-y-1/2 transition-transform hover:scale-105" style="left: 80%; top: 25%;">
+                <div class="text-5xl drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)]">♠️</div>
+                <div class="mt-2 bg-slate-900/90 border border-emerald-400/50 text-emerald-300 text-xs px-3 py-1 rounded-full font-bold shadow-md">홀덤</div>
+                <!-- 상징물 하단 E 키 알림 프롬프트 -->
+                <div class="prompt-badge mt-2 bg-amber-400 text-slate-950 text-xs font-black px-2.5 py-1 rounded-md shadow-lg whitespace-nowrap animate-bounce hidden">
+                    E 키로 시작
+                </div>
+            </div>
+        </div>
+
+        <!-- [기능 5] NPC 박은찬 캐릭터 오브젝트 (우측 하단 구석 고정) -->
+        <div id="npc-eunchan" class="absolute flex flex-col items-center transform -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none" style="left: 88%; top: 85%;">
+            <!-- NPC 머리 위 E 키 대화 프롬프트 -->
+            <div class="prompt-badge mb-2 bg-amber-400 text-slate-950 text-xs font-black px-2.5 py-1 rounded-md shadow-lg whitespace-nowrap animate-bounce hidden pointer-events-auto">
+                E 키로 대화
+            </div>
+            <!-- 빨간색 메인 원 (플레이어와 동일 크기/구조) -->
+            <div class="relative" style="width: 40px; height: 40px;">
+                <div class="w-10 h-10 bg-red-500 rounded-full shadow-lg border border-red-300"></div>
+                <!-- 서브 원 1 -->
+                <div class="absolute w-3.5 h-3.5 bg-red-500 rounded-full shadow-md border border-red-300" style="top: -12px; left: -8px;"></div>
+                <!-- 서브 원 2 -->
+                <div class="absolute w-3.5 h-3.5 bg-red-500 rounded-full shadow-md border border-red-300" style="top: -12px; right: -8px;"></div>
+            </div>
+            <!-- 이름표 -->
+            <div class="mt-2 bg-slate-900/90 border border-red-400/50 text-red-300 text-xs px-3 py-1 rounded-full font-bold shadow-md">
+                박은찬
+            </div>
+        </div>
+
+        <!-- 캐릭터 오브젝트 (메인 원 + 서브 원 2개) -->
+        <div id="player-group" class="absolute pointer-events-none transition-transform duration-75 z-20" style="width: 40px; height: 40px; left: 50%; top: 75%; transform: translate(-50%, -50%);">
+            <!-- 메인 하얀 원 -->
+            <div class="w-10 h-10 bg-white rounded-full shadow-lg border border-slate-200"></div>
+
+            <!-- 서브 원 1 (좌측 전방) -->
+            <div class="absolute w-3.5 h-3.5 bg-white rounded-full shadow-md border border-slate-200" style="top: -12px; left: -8px;"></div>
+
+            <!-- 서브 원 2 (우측 전방) -->
+            <div class="absolute w-3.5 h-3.5 bg-white rounded-full shadow-md border border-slate-200" style="top: -12px; right: -8px;"></div>
+        </div>
+    </main>
+
+    <!-- 모달: 슬롯머신 게임 -->
+    <div id="modal-slot" class="fixed inset-0 bg-black/80 flex items-center justify-center hidden z-50 p-4">
+        <div class="bg-slate-900 border-2 border-amber-500 rounded-2xl w-full max-w-md p-6 relative shadow-2xl">
+            <!-- 닫기 버튼 -->
+            <button onclick="closeModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white text-xl font-bold p-1">✕</button>
+            
+            <h2 class="text-2xl font-black text-center text-amber-400 mb-2 flex items-center justify-center gap-2">
+                🎰 슬롯머신
+            </h2>
+            <p class="text-xs text-slate-400 text-center mb-6">3개 일치: 10배~50배 / 2개 일치: 2배 (💎, 7️⃣은 3배)</p>
+
+            <!-- 슬롯 릴 화면 -->
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 mb-6 flex justify-center items-center gap-3 shadow-inner">
+                <div id="reel-1" class="w-20 h-24 bg-slate-900 border border-amber-500/30 rounded-lg flex items-center justify-center text-4xl shadow-md">🎰</div>
+                <div id="reel-2" class="w-20 h-24 bg-slate-900 border border-amber-500/30 rounded-lg flex items-center justify-center text-4xl shadow-md">🎰</div>
+                <div id="reel-3" class="w-20 h-24 bg-slate-900 border border-amber-500/30 rounded-lg flex items-center justify-center text-4xl shadow-md">🎰</div>
+            </div>
+
+            <!-- 슬롯 상태/결과 메시지 -->
+            <div id="slot-message" class="text-center text-sm font-bold text-amber-300 min-h-[24px] mb-4">
+                베팅 금액을 입력하고 스핀을 누르세요!
+            </div>
+
+            <!-- 베팅 금액 직접 입력 -->
+            <div class="mb-4">
+                <label for="bet-input" class="block text-xs text-slate-400 mb-1">
+                    베팅 금액 ($) <span id="bet-rule-text" class="text-slate-500"></span>
+                </label>
+                <div class="flex gap-2">
+                    <input id="bet-input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="9" autocomplete="off" value="10"
+                           class="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-center text-lg font-bold text-white focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:opacity-50" />
+                    <button id="bet-max-btn" type="button" onclick="setMaxBet()"
+                            class="bg-slate-800 hover:bg-red-600 border border-slate-700 font-bold px-4 rounded-lg text-sm text-red-400 hover:text-white transition disabled:opacity-50">
+                        올인
+                    </button>
+                </div>
+            </div>
+
+            <!-- 스핀 버튼 -->
+            <button id="spin-btn" onclick="spinSlot()" class="w-full bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-black py-3 rounded-xl text-lg shadow-lg transition">
+                스핀!
+            </button>
+        </div>
+    </div>
+
+    <!-- 모달: 준비 중 (블랙잭 / 룰렛) -->
+    <div id="modal-ready" class="fixed inset-0 bg-black/80 flex items-center justify-center hidden z-50 p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-6 text-center relative shadow-2xl">
+            <button onclick="closeModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white text-xl font-bold p-1">✕</button>
+            <div id="ready-icon" class="text-5xl mb-3">🃏</div>
+            <h3 id="ready-title" class="text-xl font-bold text-white mb-2">블랙잭</h3>
+            <p class="text-slate-400 text-sm mb-6">현재 준비 중인 게임입니다!</p>
+            <button onclick="closeModal()" class="bg-slate-800 hover:bg-slate-700 text-white font-bold px-6 py-2 rounded-lg text-sm">확인</button>
+        </div>
+    </div>
+
+    <!-- 모달: 블랙잭 -->
+    <div id="modal-blackjack" class="fixed inset-0 bg-black/80 flex items-center justify-center hidden z-50 p-4">
+        <div class="bg-slate-900 border-2 border-blue-500 rounded-2xl w-full max-w-lg p-6 relative shadow-2xl max-h-[95vh] overflow-y-auto">
+            <button onclick="closeModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white text-xl font-bold p-1">✕</button>
+
+            <h2 class="text-2xl font-black text-center text-blue-300 mb-1 flex items-center justify-center gap-2">
+                🃏 블랙잭
+            </h2>
+            <p id="bj-rule-text" class="text-xs text-slate-400 text-center mb-4"></p>
+
+            <!-- 딜러 -->
+            <div class="bg-emerald-900/40 border border-emerald-800 rounded-xl p-3 mb-3">
+                <div class="flex justify-between text-xs text-slate-300 mb-2">
+                    <span class="font-bold">딜러</span>
+                    <span id="bj-dealer-total" class="font-bold text-amber-300"></span>
+                </div>
+                <div id="bj-dealer-cards" class="flex gap-2 min-h-[80px]"></div>
+            </div>
+
+            <!-- 플레이어 -->
+            <div class="bg-emerald-900/40 border border-emerald-800 rounded-xl p-3 mb-3">
+                <div class="flex justify-between text-xs text-slate-300 mb-2">
+                    <span class="font-bold">플레이어 <span class="text-slate-400 font-normal">(베팅 <span id="bj-current-bet">0</span>$)</span></span>
+                    <span id="bj-player-total" class="font-bold text-amber-300"></span>
+                </div>
+                <div id="bj-player-cards" class="flex gap-2 min-h-[80px]"></div>
+            </div>
+
+            <!-- 상태/결과 메시지 -->
+            <div id="bj-message" class="text-center text-sm font-bold text-amber-300 min-h-[24px] mb-3">
+                베팅 금액을 입력하고 딜을 누르세요!
+            </div>
+
+            <!-- 베팅 영역 (판이 끝났을 때 표시) -->
+            <div id="bj-bet-area">
+                <label for="bj-bet-input" class="block text-xs text-slate-400 mb-1">
+                    베팅 금액 ($) <span id="bj-bet-rule-text" class="text-slate-500"></span>
+                </label>
+                <div class="flex gap-2 mb-3">
+                    <input id="bj-bet-input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="9" autocomplete="off" value="10"
+                           class="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-center text-lg font-bold text-white focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50" />
+                    <button id="bj-max-btn" type="button" onclick="setBlackjackMaxBet()"
+                            class="bg-slate-800 hover:bg-red-600 border border-slate-700 font-bold px-4 rounded-lg text-sm text-red-400 hover:text-white transition disabled:opacity-50">
+                        올인
+                    </button>
+                </div>
+                <button id="bj-deal-btn" onclick="dealBlackjack()" class="w-full bg-blue-500 hover:bg-blue-400 active:bg-blue-600 text-white font-black py-3 rounded-xl text-lg shadow-lg transition">
+                    딜!
+                </button>
+            </div>
+
+            <!-- 행동 영역 (판이 진행되는 동안 표시) -->
+            <div id="bj-action-area" class="hidden grid grid-cols-3 gap-2">
+                <button id="bj-hit-btn" onclick="bjHit()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl shadow transition disabled:opacity-40">히트</button>
+                <button id="bj-stand-btn" onclick="bjStand()" class="bg-red-600 hover:bg-red-500 text-white font-black py-3 rounded-xl shadow transition disabled:opacity-40">스탠드</button>
+                <button id="bj-double-btn" onclick="bjDouble()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-3 rounded-xl shadow transition disabled:opacity-40">더블다운</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 모달: 룰렛 -->
+    <div id="modal-roulette" class="fixed inset-0 bg-black/80 flex items-center justify-center hidden z-50 p-4">
+        <div class="bg-slate-900 border-2 border-red-500 rounded-2xl w-full max-w-3xl p-5 relative shadow-2xl max-h-[95vh] overflow-y-auto">
+            <button onclick="closeModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white text-xl font-bold p-1">✕</button>
+
+            <h2 class="text-2xl font-black text-center text-red-400 mb-1 flex items-center justify-center gap-2">
+                🎡 룰렛
+            </h2>
+            <p id="rl-rule-text" class="text-xs text-slate-400 text-center mb-3"></p>
+
+            <!-- 결과 휠 + 최근 결과 -->
+            <div class="flex items-center justify-center gap-4 mb-3">
+                <div id="rl-wheel" class="w-24 h-24 rounded-full border-4 border-slate-600 bg-slate-950 flex items-center justify-center text-4xl font-black text-white shadow-inner">?</div>
+                <div>
+                    <div class="text-xs text-slate-400 mb-1">최근 결과</div>
+                    <div id="rl-history" class="flex flex-wrap gap-1 max-w-[260px] min-h-[28px]"></div>
+                </div>
+            </div>
+
+            <!-- 베팅 테이블 (JS가 채움) -->
+            <div class="overflow-x-auto pb-1 mb-2">
+                <div id="rl-table" class="grid gap-1 min-w-[560px]" style="grid-template-columns: 48px repeat(12, minmax(0, 1fr)) 52px;"></div>
+            </div>
+
+            <!-- 선택한 숫자 -->
+            <div class="flex flex-wrap items-center gap-2 mb-3 text-xs">
+                <span id="rl-selection-info" class="text-slate-300 flex-1 min-w-[180px]"></span>
+                <button id="rl-add-selected-btn" type="button" onclick="rlAddSelected()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-3 py-2 rounded-lg disabled:opacity-40">선택한 숫자에 베팅</button>
+                <button type="button" onclick="rlClearSelection()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-bold px-3 py-2 rounded-lg">선택 해제</button>
+            </div>
+
+            <!-- 칩 금액 -->
+            <div class="flex gap-2 mb-3 items-end">
+                <div class="flex-1">
+                    <label for="rl-bet-input" class="block text-xs text-slate-400 mb-1">
+                        한 번에 올릴 칩 금액 ($) <span id="rl-bet-rule-text" class="text-slate-500"></span>
+                    </label>
+                    <input id="rl-bet-input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="9" autocomplete="off" value="10"
+                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-center text-lg font-bold text-white focus:outline-none focus:ring-2 focus:ring-red-400 disabled:opacity-50" />
+                </div>
+                <button id="rl-max-btn" type="button" onclick="setRouletteMaxBet()"
+                        class="bg-slate-800 hover:bg-red-600 border border-slate-700 font-bold px-4 py-2.5 rounded-lg text-sm text-red-400 hover:text-white transition disabled:opacity-50">
+                    올인
+                </button>
+            </div>
+
+            <!-- 올려둔 베팅 -->
+            <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 mb-3">
+                <div class="flex justify-between text-xs text-slate-400 mb-2">
+                    <span>올려둔 베팅</span>
+                    <span>합계 <strong id="rl-total-bet" class="text-amber-300">0</strong>$</span>
+                </div>
+                <div id="rl-bet-list" class="flex flex-wrap gap-2 min-h-[28px]"></div>
+            </div>
+
+            <div id="rl-message" class="text-center text-sm font-bold text-amber-300 min-h-[24px] mb-3"></div>
+
+            <div class="grid grid-cols-3 gap-2">
+                <button id="rl-spin-btn" type="button" onclick="spinRoulette()" class="bg-red-500 hover:bg-red-400 active:bg-red-600 text-white font-black py-3 rounded-xl text-lg shadow-lg transition disabled:opacity-50">스핀!</button>
+                <button id="rl-repeat-btn" type="button" onclick="rlRepeatBets()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold py-3 rounded-xl text-sm transition disabled:opacity-50">직전 베팅 반복</button>
+                <button id="rl-clear-btn" type="button" onclick="rlClearBets()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold py-3 rounded-xl text-sm transition disabled:opacity-50">베팅 초기화</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 모달: 텍사스 홀덤 (1:1) -->
+    <div id="modal-holdem" class="fixed inset-0 bg-black/80 flex items-center justify-center hidden z-50 p-4">
+        <div class="bg-slate-900 border-2 border-emerald-500 rounded-2xl w-full max-w-2xl p-5 relative shadow-2xl max-h-[95vh] overflow-y-auto">
+            <button onclick="closeModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white text-xl font-bold p-1">✕</button>
+
+            <h2 class="text-2xl font-black text-center text-emerald-300 mb-1 flex items-center justify-center gap-2">
+                ♠️ 텍사스 홀덤 (1:1)
+            </h2>
+            <p id="hd-rule-text" class="text-xs text-slate-400 text-center mb-3"></p>
+
+            <!-- 상대 -->
+            <div class="bg-emerald-900/40 border border-emerald-800 rounded-xl p-3 mb-2">
+                <div class="flex justify-between items-center text-xs text-slate-300 mb-2">
+                    <span class="font-bold"><span id="hd-opp-name"></span> <span id="hd-opp-badge" class="ml-1 text-amber-300"></span></span>
+                    <span>칩 <strong id="hd-opp-stack" class="text-amber-300">-</strong>$ · 이번 라운드 <strong id="hd-opp-bet" class="text-amber-300">0</strong>$</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div id="hd-opp-cards" class="flex gap-2 min-h-[80px]"></div>
+                    <div id="hd-opp-note" class="text-sm font-bold text-slate-200"></div>
+                </div>
+            </div>
+
+            <!-- 공용 카드 + 팟 -->
+            <div class="bg-emerald-950/60 border border-emerald-800 rounded-xl p-3 mb-2">
+                <div class="flex justify-between text-xs text-slate-300 mb-2">
+                    <span id="hd-street-label" class="font-bold">공용 카드</span>
+                    <span>팟 <strong id="hd-pot" class="text-amber-300">0</strong>$</span>
+                </div>
+                <div id="hd-board" class="flex gap-2 justify-center min-h-[80px]"></div>
+            </div>
+
+            <!-- 플레이어 -->
+            <div class="bg-emerald-900/40 border border-emerald-800 rounded-xl p-3 mb-3">
+                <div class="flex justify-between items-center text-xs text-slate-300 mb-2">
+                    <span class="font-bold">플레이어 <span id="hd-player-badge" class="ml-1 text-amber-300"></span> <span id="hd-hand-name" class="ml-1 text-emerald-300 font-bold"></span></span>
+                    <span>칩 <strong id="hd-player-stack" class="text-amber-300">0</strong>$ · 이번 라운드 <strong id="hd-player-bet" class="text-amber-300">0</strong>$</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div id="hd-player-cards" class="flex gap-2 min-h-[80px]"></div>
+                    <div id="hd-player-note" class="text-sm font-bold text-slate-200"></div>
+                </div>
+            </div>
+
+            <div id="hd-message" class="text-center text-sm font-bold text-amber-300 min-h-[24px] mb-3"></div>
+
+            <!-- 핸드 시작 영역 -->
+            <div id="hd-start-area">
+                <button id="hd-deal-btn" onclick="dealHoldem()" class="w-full bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-slate-950 font-black py-3 rounded-xl text-lg shadow-lg transition">
+                    딜!
+                </button>
+            </div>
+
+            <!-- 행동 영역 (내 차례에 표시) -->
+            <div id="hd-action-area" class="hidden">
+                <div class="flex gap-2 mb-2">
+                    <input id="hd-raise-input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="9" autocomplete="off" value="0"
+                           class="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-center text-lg font-bold text-white focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-50" />
+                    <button id="hd-raise-btn" type="button" onclick="hdPlayerRaise()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-5 rounded-lg shadow transition disabled:opacity-40">레이즈</button>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <button id="hd-fold-btn" type="button" onclick="hdPlayerFold()" class="bg-red-600 hover:bg-red-500 text-white font-black py-3 rounded-xl shadow transition disabled:opacity-40">폴드</button>
+                    <button id="hd-call-btn" type="button" onclick="hdPlayerCall()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl shadow transition disabled:opacity-40">체크</button>
+                    <button id="hd-allin-btn" type="button" onclick="hdPlayerAllIn()" class="bg-slate-800 hover:bg-red-600 border border-slate-700 text-red-400 hover:text-white font-black py-3 rounded-xl shadow transition disabled:opacity-40">올인</button>
+                </div>
+                <div id="hd-raise-hint" class="text-xs text-slate-400 mt-2 text-center"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- [기능 5] 모달: 박은찬과 가위바위보 -->
+    <div id="modal-rps" class="fixed inset-0 bg-black/80 flex items-center justify-center hidden z-50 p-4">
+        <div class="bg-slate-900 border-2 border-red-500 rounded-2xl w-full max-w-md p-6 relative shadow-2xl text-center">
+            <!-- 닫기 버튼 -->
+            <button onclick="closeModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white text-xl font-bold p-1">✕</button>
+            
+            <h2 class="text-2xl font-black text-red-400 mb-1 flex items-center justify-center gap-2">
+                ✊ 박은찬과 가위바위보
+            </h2>
+            <div class="text-xs text-slate-400 mb-6 flex justify-center gap-4">
+                <span>소지금: <strong id="rps-money" class="text-emerald-400">1,000$</strong></span>
+                <span>오늘 패배: <strong id="rps-loss-count" class="text-red-400">0</strong> / <span id="rps-loss-limit">5</span></span>
+            </div>
+
+            <!-- 대결 연출 화면 (내 손 vs 은찬 손) -->
+            <div class="bg-slate-950 p-6 rounded-xl border border-slate-800 mb-6 flex justify-around items-center shadow-inner">
+                <div class="flex flex-col items-center">
+                    <span class="text-xs text-slate-400 mb-2">플레이어</span>
+                    <div id="player-rps-choice" class="text-5xl bg-slate-900 w-20 h-20 rounded-xl border border-slate-800 flex items-center justify-center shadow">❓</div>
+                </div>
+                <div class="text-xl font-bold text-slate-500">VS</div>
+                <div class="flex flex-col items-center">
+                    <span class="text-xs text-slate-400 mb-2">박은찬</span>
+                    <div id="eunchan-rps-choice" class="text-5xl bg-slate-900 w-20 h-20 rounded-xl border border-slate-800 flex items-center justify-center shadow">❓</div>
+                </div>
+            </div>
+
+            <!-- 결과/진행 안내 메시지 -->
+            <div id="rps-message" class="text-sm font-bold text-amber-300 min-h-[28px] mb-6 flex items-center justify-center">
+                가위, 바위, 보 중 하나를 선택하세요!
+            </div>
+
+            <!-- 가위바위보 버튼 3개 -->
+            <div id="rps-buttons-container" class="grid grid-cols-3 gap-3">
+                <button onclick="playRps('scissors')" class="rps-btn bg-slate-800 hover:bg-slate-700 active:scale-95 border border-slate-700 py-3 rounded-xl text-3xl transition shadow">✌️</button>
+                <button onclick="playRps('rock')" class="rps-btn bg-slate-800 hover:bg-slate-700 active:scale-95 border border-slate-700 py-3 rounded-xl text-3xl transition shadow">✊</button>
+                <button onclick="playRps('paper')" class="rps-btn bg-slate-800 hover:bg-slate-700 active:scale-95 border border-slate-700 py-3 rounded-xl text-3xl transition shadow">✋</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- [기능 6] 모달: 게임 가이드 (탭으로 나눠서 한눈에 보기) -->
+    <div id="modal-guide" class="fixed inset-0 bg-black/80 flex items-center justify-center hidden z-[250] p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-2xl relative shadow-2xl flex flex-col max-h-[90vh]">
+            <!-- 제목 + 탭 -->
+            <div class="px-5 pt-5 pb-3">
+                <button onclick="closeGuideModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white text-xl font-bold p-1" aria-label="가이드 닫기">✕</button>
+                <h2 class="text-2xl font-black text-amber-400 text-center">📖 게임 가이드</h2>
+                <div class="grid grid-cols-4 gap-1 mt-3 bg-slate-950/70 p-1 rounded-xl" role="tablist">
+                    <button id="guide-tab-goal" type="button" role="tab" onclick="guideShowTab('goal')" class="py-2 rounded-lg text-sm font-bold transition">🎯 목표</button>
+                    <button id="guide-tab-ctrl" type="button" role="tab" onclick="guideShowTab('ctrl')" class="py-2 rounded-lg text-sm font-bold transition">🎮 조작</button>
+                    <button id="guide-tab-games" type="button" role="tab" onclick="guideShowTab('games')" class="py-2 rounded-lg text-sm font-bold transition">🎰 게임별</button>
+                    <button id="guide-tab-tips" type="button" role="tab" onclick="guideShowTab('tips')" class="py-2 rounded-lg text-sm font-bold transition">💡 팁</button>
+                </div>
+            </div>
+
+            <div id="guide-scroll" class="px-5 pb-3 overflow-y-auto flex-1 text-sm text-slate-300 leading-relaxed">
+
+                <!-- 🎯 목표 -->
+                <section id="guide-panel-goal">
+                    <div class="bg-amber-500/10 border border-amber-500/40 rounded-2xl p-4 mb-4 text-center">
+                        <p class="text-lg font-black text-amber-300">하루가 끝날 때 소지금이 "필요 금액" 이상이어야 해요!</p>
+                        <p class="mt-1">시작 소지금은 <strong id="gd-start-money" class="text-white">1,000$</strong>. 통과하면 다음 날, 못 넘기면 게임오버예요. 최대한 오래 버텨 보세요.</p>
+                    </div>
+
+                    <p class="text-xs font-bold text-slate-400 mb-2">하루는 이렇게 흘러가요</p>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+                        <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-3 text-center">
+                            <div class="text-2xl">🎰</div>
+                            <div class="font-bold text-white mt-1">① 돈 벌기</div>
+                            <div class="text-xs text-slate-400 mt-1">슬롯·블랙잭·룰렛·홀덤으로 소지금을 불려요</div>
+                        </div>
+                        <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-3 text-center">
+                            <div class="text-2xl">🎮</div>
+                            <div class="font-bold text-white mt-1">② 판 수 채우기</div>
+                            <div class="text-xs text-slate-400 mt-1">왼쪽 아래 "오늘 판수"가 가득 차면 하루가 끝나요</div>
+                        </div>
+                        <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-3 text-center">
+                            <div class="text-2xl">⚖️</div>
+                            <div class="font-bold text-white mt-1">③ 하루 끝 검사</div>
+                            <div class="text-xs text-slate-400 mt-1">소지금이 위쪽 "필요 금액" 이상인지 확인해요</div>
+                        </div>
+                        <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-3 text-center">
+                            <div class="text-2xl">🌙</div>
+                            <div class="font-bold text-white mt-1">④ 결과</div>
+                            <div class="text-xs mt-1"><span class="text-emerald-400">✅ 다음 날</span><br><span class="text-red-400">💀 미달이면 게임오버</span></div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-3 mb-3">
+                        <p class="text-xs text-slate-400 mb-2">일차가 올라갈수록 필요 금액은 매일 <strong id="gd-growth" class="text-amber-300">2</strong>배씩, 하루 판 수는 <strong id="gd-games-step" class="text-amber-300">2</strong>판씩 늘어요.</p>
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-xs text-slate-400"><th class="py-1 px-2 text-left font-normal">일차</th><th class="py-1 px-2 text-right font-normal">필요 금액</th><th class="py-1 px-2 text-right font-normal">하루 판 수</th></tr>
+                            </thead>
+                            <tbody id="gd-day-table"></tbody>
+                        </table>
+                    </div>
+
+                    <ul class="space-y-1">
+                        <li>💰 소지금은 다음 날로 이어지고, 필요 금액이 차감되지는 않아요.</li>
+                        <li>🎮 한 판 = 슬롯 스핀 1번 · 블랙잭 1판 · 룰렛 스핀 1번 · 홀덤 1핸드</li>
+                        <li>✊ 박은찬과의 가위바위보는 판 수에 포함되지 않아요.</li>
+                    </ul>
+                </section>
+
+                <!-- 🎮 조작 -->
+                <section id="guide-panel-ctrl" class="hidden">
+                    <div class="grid sm:grid-cols-2 gap-4">
+                        <div class="space-y-2">
+                            <div class="flex items-center gap-3"><span class="flex gap-1 w-28 shrink-0"><kbd class="kbd">W</kbd><kbd class="kbd">A</kbd><kbd class="kbd">S</kbd><kbd class="kbd">D</kbd></span><span>캐릭터 이동</span></div>
+                            <div class="flex items-center gap-3"><span class="w-28 shrink-0"><kbd class="kbd">Shift</kbd></span><span>누르고 이동하면 <strong id="gd-sprint" class="text-amber-300">3</strong>배 빠르게 달려요</span></div>
+                            <div class="flex items-center gap-3"><span class="w-28 shrink-0"><kbd class="kbd">E</kbd></span><span>게임대·박은찬 앞에서 시작</span></div>
+                            <div class="flex items-center gap-3"><span class="w-28 shrink-0"><kbd class="kbd">ESC</kbd></span><span>열린 팝업 닫기</span></div>
+                            <div class="flex items-center gap-3"><span class="w-28 shrink-0"><kbd class="kbd">Enter</kbd></span><span>금액 입력창에서 바로 실행</span></div>
+                            <div class="flex items-center gap-3"><span class="w-28 shrink-0"><kbd class="kbd">M</kbd></span><span>효과음 켜기/끄기 (🔊 버튼도 가능)</span></div>
+                            <div class="flex items-center gap-3"><span class="w-28 shrink-0"><kbd class="kbd">H</kbd></span><span>이 가이드 열기/닫기 (게임 중에도, 📖 버튼도 가능)</span></div>
+                        </div>
+
+                        <!-- 화면 구성 미니맵 -->
+                        <div>
+                            <p class="text-xs font-bold text-slate-400 mb-2">화면은 이렇게 생겼어요</p>
+                            <div class="relative w-full rounded-xl bg-[#031841] border border-slate-700 overflow-hidden" style="aspect-ratio: 16 / 10;">
+                                <div class="absolute top-0 inset-x-0 h-5 bg-black text-[10px] flex justify-between items-center px-2 text-slate-300">
+                                    <span>소지금 / <span class="text-amber-400">필요 금액</span></span><span class="text-amber-400 font-bold">N일차</span><span class="text-emerald-400">소지금</span>
+                                </div>
+                                <div class="absolute text-center -translate-x-1/2" style="left: 20%; top: 26%;"><div class="text-xl">🎰</div><div class="text-[9px]">슬롯</div></div>
+                                <div class="absolute text-center -translate-x-1/2" style="left: 40%; top: 26%;"><div class="text-xl">🃏</div><div class="text-[9px]">블랙잭</div></div>
+                                <div class="absolute text-center -translate-x-1/2" style="left: 60%; top: 26%;"><div class="text-xl">🎡</div><div class="text-[9px]">룰렛</div></div>
+                                <div class="absolute text-center -translate-x-1/2" style="left: 80%; top: 26%;"><div class="text-xl">♠️</div><div class="text-[9px]">홀덤</div></div>
+                                <div class="absolute -translate-x-1/2 text-center" style="left: 50%; top: 66%;"><div class="w-5 h-5 mx-auto rounded-full bg-white border border-slate-300"></div><div class="text-[9px] mt-0.5">나</div></div>
+                                <div class="absolute -translate-x-1/2 text-center" style="left: 88%; top: 68%;"><div class="w-5 h-5 mx-auto rounded-full bg-red-500 border border-red-300"></div><div class="text-[9px] mt-0.5">박은찬</div></div>
+                                <div class="absolute left-2 bottom-2 text-[9px] bg-slate-900/80 border border-slate-700 rounded px-1.5 py-0.5">🎮 오늘 판수 0 / 3</div>
+                            </div>
+                            <p class="text-xs text-slate-400 mt-2">게임대에 가까이 가면 <span class="text-amber-300 font-bold">"E 키로 시작"</span> 표시가 떠요.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 🎰 게임별 -->
+                <section id="guide-panel-games" class="hidden space-y-3">
+                    <div class="border-l-4 border-amber-400 bg-slate-950/60 rounded-r-xl p-3">
+                        <div class="flex items-center justify-between mb-1"><span class="font-black text-white">🎰 슬롯머신</span><span class="text-[11px] bg-slate-800 rounded-full px-2 py-0.5">스핀 1번 = 1판</span></div>
+                        <p>금액을 직접 입력(최소 <strong id="gd-min-bet" class="text-amber-300">10$</strong>, <strong id="gd-bet-unit" class="text-amber-300">10$</strong> 단위)하고 스핀!</p>
+                        <p>같은 그림 3개 → 베팅의 <strong id="gd-slot-3" class="text-emerald-400">10~50배</strong> · 2개 → <strong id="gd-slot-2" class="text-emerald-400">2~3배</strong></p>
+                    </div>
+
+                    <div class="border-l-4 border-blue-400 bg-slate-950/60 rounded-r-xl p-3">
+                        <div class="flex items-center justify-between mb-1"><span class="font-black text-white">🃏 블랙잭</span><span class="text-[11px] bg-slate-800 rounded-full px-2 py-0.5">1판 = 1판</span></div>
+                        <p>카드 합을 <strong class="text-white">21에 가깝게</strong>! 21을 넘으면(버스트) 패배예요. 딜러는 <strong id="gd-dealer" class="text-amber-300">17</strong> 이상이면 멈춰요.</p>
+                        <p><strong class="text-white">히트</strong> 한 장 더 · <strong class="text-white">스탠드</strong> 멈춤 · <strong class="text-white">더블다운</strong> 베팅 2배 + 한 장만</p>
+                        <p>승리 1배 · 첫 두 장이 21(블랙잭)이면 <strong id="gd-bj-payout" class="text-emerald-400">1.5</strong>배 · 무승부는 베팅액 반환</p>
+                    </div>
+
+                    <div class="border-l-4 border-red-400 bg-slate-950/60 rounded-r-xl p-3">
+                        <div class="flex items-center justify-between mb-1"><span class="font-black text-white">🎡 룰렛 (0~36)</span><span class="text-[11px] bg-slate-800 rounded-full px-2 py-0.5">스핀 1번 = 1판</span></div>
+                        <p>칩 금액을 정하고 <strong class="text-white">베팅할 곳을 눌러 칩을 올린 뒤</strong> 스핀! 여러 곳에 동시에 걸 수 있어요.</p>
+                        <p>숫자를 눌러 고르면 1개 · 맞닿은 2개 · 한 줄 3개 · 네모 4개 · 두 줄 6개가 자동 인식돼요.</p>
+                        <div id="gd-rl-payouts" class="flex flex-wrap gap-1 my-1"></div>
+                        <p class="text-xs text-slate-400">0이 나오면 숫자를 직접 고른 베팅 말고는 모두 져요.</p>
+                    </div>
+
+                    <div class="border-l-4 border-emerald-400 bg-slate-950/60 rounded-r-xl p-3">
+                        <div class="flex items-center justify-between mb-1"><span class="font-black text-white">♠️ 텍사스 홀덤 (1:1)</span><span class="text-[11px] bg-slate-800 rounded-full px-2 py-0.5">핸드 1번 = 1판</span></div>
+                        <p>박은찬과 1:1! 내 카드 2장 + 공용 카드 5장 중 5장으로 <strong class="text-white">더 높은 족보</strong>를 만들면 팟을 가져가요.</p>
+                        <p>블라인드 <strong id="gd-hd-blinds" class="text-amber-300">10/20$</strong> · <strong class="text-white">폴드</strong> / <strong class="text-white">체크·콜</strong> / <strong class="text-white">레이즈</strong> / <strong class="text-white">올인</strong> · 가진 칩 안에서만 걸 수 있어요.</p>
+                        <p class="text-xs text-slate-400">족보: 로열·스트레이트 플러시 &gt; 포카드 &gt; 풀 하우스 &gt; 플러시 &gt; 스트레이트 &gt; 트리플 &gt; 투 페어 &gt; 원 페어 &gt; 하이 카드</p>
+                        <p class="text-xs text-red-300">박은찬은 당신의 베팅 습관을 읽고 학습해요. 허세도 조심하세요!</p>
+                    </div>
+
+                    <div class="border-l-4 border-slate-400 bg-slate-950/60 rounded-r-xl p-3">
+                        <div class="flex items-center justify-between mb-1"><span class="font-black text-white">✊ 박은찬과 가위바위보</span><span class="text-[11px] bg-slate-800 rounded-full px-2 py-0.5">판 수에 포함 안 됨</span></div>
+                        <p>오른쪽 아래 빨간 캐릭터에게 가서 E! 이기면 <strong id="gd-rps-reward" class="text-emerald-400">20$</strong>, 비기면 그대로, 지면 패배 +1이에요.</p>
+                        <p>하루에 <strong id="gd-rps-limit" class="text-red-400">5</strong>번 지면 그날은 더 못 해요. 박은찬이 패턴을 읽으니 무작위로 내세요!</p>
+                    </div>
+                </section>
+
+                <!-- 💡 팁 -->
+                <section id="guide-panel-tips" class="hidden">
+                    <ul class="space-y-2">
+                        <li class="bg-slate-950/60 border border-slate-800 rounded-xl p-3">🥇 <span id="gd-tip-day1"></span></li>
+                        <li class="bg-slate-950/60 border border-slate-800 rounded-xl p-3">📈 필요 금액은 매일 <strong id="gd-tip-growth" class="text-amber-300">2</strong>배로 빠르게 커져요. 초반에 돈을 넉넉히 불려 두세요.</li>
+                        <li class="bg-slate-950/60 border border-slate-800 rounded-xl p-3">✊ 가위바위보는 판 수에 포함되지 않으니, 모자란 돈을 메우거나 하루를 시작하기 전에 여유를 만들 때 좋아요.</li>
+                        <li class="bg-slate-950/60 border border-slate-800 rounded-xl p-3">🎯 큰 금액을 걸기 전에 위쪽 "필요 금액"과 비교해서 <strong class="text-white">얼마가 더 필요한지</strong> 먼저 확인하세요.</li>
+                        <li class="bg-slate-950/60 border border-slate-800 rounded-xl p-3">⚖️ 슬롯과 룰렛 숫자 베팅은 한 번에 크게 불릴 수 있지만 위험도 커요. 블랙잭은 규칙대로 두면 크게 잃지 않는 안정적인 선택이에요.</li>
+                        <li class="bg-slate-950/60 border border-slate-800 rounded-xl p-3">⌨️ <kbd class="kbd">Shift</kbd> 달리기로 이동 시간을 줄이고, <kbd class="kbd">H</kbd> 키로 언제든 이 가이드를 다시 볼 수 있어요.</li>
+                    </ul>
+                </section>
+            </div>
+
+            <div class="px-5 py-3 border-t border-slate-800 flex items-center justify-between">
+                <span class="text-xs text-slate-500 hidden sm:inline">← → 키로 탭을 넘길 수 있어요</span>
+                <button onclick="closeGuideModal()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-8 py-2.5 rounded-xl text-sm transition ml-auto">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 엔딩 모달: 게임 오버 화면 -->
+    <div id="modal-ending" class="fixed inset-0 bg-black/90 flex items-center justify-center hidden z-50 p-4">
+        <div class="bg-slate-900 border-2 border-red-500 rounded-2xl w-full max-w-md p-8 text-center relative shadow-2xl flex flex-col items-center">
+            <div class="text-6xl mb-4">💀</div>
+            <h2 class="text-3xl font-black mb-2 text-red-500">GAME OVER</h2>
+            <p id="ending-desc" class="text-slate-300 text-sm mb-4">오늘의 필요 금액을 채우지 못했습니다.</p>
+            
+            <!-- 도달한 일차 및 최고 일차 기록 -->
+            <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 w-full mb-6 text-sm flex justify-around">
+                <div>
+                    <span class="text-slate-400 block text-xs">도달한 일차</span>
+                    <span id="final-day" class="text-amber-400 font-bold text-lg">1일차</span>
+                </div>
+                <div class="border-r border-slate-800"></div>
+                <div>
+                    <span class="text-slate-400 block text-xs">최고 기록</span>
+                    <span id="best-day" class="text-emerald-400 font-bold text-lg">1일차</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- [기능 4] 일차 전환 전용 오버레이 레이어 (지평선 마스킹 적용) -->
+    <div id="day-transition-overlay" class="fixed inset-0 bg-black z-[100] hidden opacity-0 transition-opacity duration-500 pointer-events-auto flex flex-col items-center justify-between overflow-hidden">
+        <!-- 지평선 위쪽만 노출하는 궤도 래퍼 -->
+        <div class="relative w-full h-full horizon-clip">
+            <!-- 회전 축 (화면 가로 50%, 세로 75%) -->
+            <div id="orbit-axis" class="absolute left-1/2 top-[75%] -translate-x-1/2 -translate-y-1/2">
+                <!-- 막대 회전 컨테이너 -->
+                <div id="sun-moon-rod" class="relative flex items-center justify-center transform-gpu" style="width: 0px; height: 0px;">
+                    <!-- 해 (☀️): 막대 상단 (반지름 = 화면 높이 35vh) -->
+                    <div id="sun-icon" class="absolute text-6xl drop-shadow-[0_0_25px_rgba(251,191,36,0.9)] -translate-x-1/2 -translate-y-1/2" style="top: -35vh; left: 0;">☀️</div>
+                    <!-- 달 (🌙): 막대 하단 (반지름 = 화면 높이 35vh) -->
+                    <div id="moon-icon" class="absolute text-6xl drop-shadow-[0_0_25px_rgba(248,250,252,0.9)] -translate-x-1/2 -translate-y-1/2" style="top: 35vh; left: 0;">🌙</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 하단 중앙 깜빡이는 취침 문구 (지평선 마스크 바깥 z-index 10) -->
+        <div class="absolute bottom-10 text-slate-300 text-lg font-semibold tracking-wider animate-sleep-pulse z-10" id="sleep-text">
+            한숨 자는 중...
+        </div>
+    </div>
+
+    <!-- 가이드 열기/닫기 (항상 맨 위에 표시) -->
+    <button id="guide-open-btn" type="button" onclick="toggleGuide()" title="게임 가이드 (H)" aria-label="게임 가이드 열기/닫기"
+            class="fixed bottom-3 right-16 z-[300] w-11 h-11 rounded-full bg-slate-900/90 border border-slate-600 text-xl flex items-center justify-center shadow-lg hover:bg-slate-800 active:scale-95 transition">📖</button>
+
+    <!-- 효과음 켜기/끄기 (항상 맨 위에 표시) -->
+    <button id="sound-toggle" type="button" onclick="SFX.toggle()" title="효과음 켜기/끄기 (M)" aria-label="효과음 켜기/끄기"
+            class="fixed bottom-3 right-3 z-[300] w-11 h-11 rounded-full bg-slate-900/90 border border-slate-600 text-xl flex items-center justify-center shadow-lg hover:bg-slate-800 active:scale-95 transition">🔊</button>
+
+    <!-- 게임 스크립트 -->
+    <script>
+        // ==========================================
+        // 효과음: Web Audio API로 직접 합성 (별도 소리 파일 없음)
+        //  - 오른쪽 아래 🔊 버튼 또는 M 키로 켜고 끔 (설정은 localStorage에 저장)
+        //  - 브라우저 정책상 첫 클릭/키 입력 이후부터 소리가 남
+        //  - 소리 관련 오류가 나도 게임은 계속 동작하도록 모두 try/catch로 감쌈
+        // ==========================================
+        const SFX = (() => {
+            let ctx = null, master = null, enabled = true;
+            try { enabled = localStorage.getItem('survival_casino_sound') !== 'off'; } catch (e) { /* 저장소를 못 써도 무시 */ }
+
+            function ensure() {
+                if (ctx) return ctx;
+                const AC = window.AudioContext || window.webkitAudioContext;
+                if (!AC) return null;
+                try {
+                    ctx = new AC();
+                    master = ctx.createGain();
+                    master.gain.value = 0.5;   // 전체 볼륨
+                    master.connect(ctx.destination);
+                } catch (e) { ctx = null; }
+                return ctx;
+            }
+
+            // 톤 하나: freq에서 freqEnd로 변하는 짧은 소리 (볼륨은 부드럽게 올랐다가 사라짐)
+            function tone(t, o) {
+                const dur = o.dur || 0.15, vol = o.vol || 0.15, attack = o.attack || 0.005;
+                const osc = ctx.createOscillator(), g = ctx.createGain();
+                osc.type = o.type || 'sine';
+                osc.frequency.setValueAtTime(o.freq, t);
+                if (o.freqEnd) osc.frequency.exponentialRampToValueAtTime(o.freqEnd, t + dur);
+                g.gain.setValueAtTime(0.0001, t);
+                g.gain.exponentialRampToValueAtTime(vol, t + attack);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+                osc.connect(g); g.connect(master);
+                osc.start(t); osc.stop(t + dur + 0.03);
+            }
+
+            // 잡음 한 번: 카드 넘기는 소리, 칩 부딪히는 소리, 바람 소리 등
+            function noise(t, o) {
+                const dur = o.dur || 0.08, vol = o.vol || 0.12;
+                const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
+                const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+                const data = buf.getChannelData(0);
+                for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+                const src = ctx.createBufferSource();
+                src.buffer = buf;
+                const filter = ctx.createBiquadFilter();
+                filter.type = o.type || 'highpass';
+                filter.frequency.value = o.freq || 3000;
+                filter.Q.value = o.q || 0.8;
+                const g = ctx.createGain();
+                g.gain.setValueAtTime(vol, t);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+                src.connect(filter); filter.connect(g); g.connect(master);
+                src.start(t); src.stop(t + dur + 0.03);
+            }
+
+            // 음계 연주: notes를 step초 간격으로 차례로
+            const arp = (t, notes, step, o) => notes.forEach((f, i) => tone(t + i * step, Object.assign({ freq: f }, o)));
+
+            const sounds = {
+                // 화면 / 입력
+                click:        (t) => tone(t, { freq: 900, freqEnd: 600, type: 'triangle', dur: 0.05, vol: 0.12 }),
+                open:         (t) => tone(t, { freq: 400, freqEnd: 800, dur: 0.14, vol: 0.12 }),
+                close:        (t) => tone(t, { freq: 700, freqEnd: 350, dur: 0.12, vol: 0.10 }),
+                error:        (t) => { tone(t, { freq: 180, type: 'square', dur: 0.1, vol: 0.08 }); tone(t + 0.11, { freq: 140, type: 'square', dur: 0.15, vol: 0.08 }); },
+                whoosh:       (t) => noise(t, { dur: 0.5, vol: 0.12, freq: 800, type: 'bandpass', q: 0.5 }),
+                gameStart:    (t) => arp(t, [392, 523, 659, 784], 0.1, { type: 'triangle', dur: 0.25, vol: 0.14 }),
+                gameOver:     (t) => arp(t, [392, 349, 311, 262], 0.22, { type: 'sawtooth', dur: 0.4, vol: 0.09 }),
+                // 칩 / 카드
+                chip:         (t) => { tone(t, { freq: 1500, freqEnd: 1100, type: 'triangle', dur: 0.06, vol: 0.14 }); noise(t, { dur: 0.04, vol: 0.08, freq: 5000 }); },
+                bigChip:      (t) => { sounds.chip(t); sounds.chip(t + 0.06); sounds.chip(t + 0.12); },
+                card:         (t) => noise(t, { dur: 0.07, vol: 0.14, freq: 2500 }),
+                check:        (t) => tone(t, { freq: 300, freqEnd: 220, dur: 0.08, vol: 0.2 }),
+                fold:         (t) => noise(t, { dur: 0.18, vol: 0.12, freq: 1500, type: 'bandpass', q: 0.6 }),
+                turn:         (t) => tone(t, { freq: 1046, dur: 0.1, vol: 0.08 }),
+                // 슬롯 / 룰렛 / 가위바위보
+                spinStart:    (t) => tone(t, { freq: 200, freqEnd: 500, type: 'sawtooth', dur: 0.25, vol: 0.07 }),
+                reelTick:     (t) => tone(t, { freq: 520, type: 'square', dur: 0.025, vol: 0.035 }),
+                reelStop:     (t) => { tone(t, { freq: 180, freqEnd: 90, dur: 0.12, vol: 0.25 }); noise(t, { dur: 0.03, vol: 0.1, freq: 2000 }); },
+                rouletteTick: (t) => tone(t, { freq: 1800, type: 'triangle', dur: 0.02, vol: 0.09 }),
+                rouletteLand: (t) => { tone(t, { freq: 600, freqEnd: 300, type: 'triangle', dur: 0.1, vol: 0.2 }); tone(t + 0.12, { freq: 500, freqEnd: 250, type: 'triangle', dur: 0.1, vol: 0.14 }); },
+                rpsBeat:      (t) => tone(t, { freq: 440, type: 'square', dur: 0.06, vol: 0.06 }),
+                // 결과
+                win:          (t) => arp(t, [880, 1175, 1568], 0.07, { type: 'triangle', dur: 0.18, vol: 0.16 }),
+                jackpot:      (t) => { arp(t, [523, 659, 784, 1047, 1319, 1568], 0.08, { type: 'square', dur: 0.2, vol: 0.08 }); arp(t + 0.5, [1568, 2093], 0.1, { type: 'triangle', dur: 0.4, vol: 0.12 }); },
+                push:         (t) => arp(t, [660, 660], 0.1, { dur: 0.12, vol: 0.12 }),
+                lose:         (t) => tone(t, { freq: 330, freqEnd: 110, type: 'sawtooth', dur: 0.35, vol: 0.09 }),
+                // 일차 전환
+                sunset:       (t) => tone(t, { freq: 700, freqEnd: 150, dur: 2.0, vol: 0.1 }),
+                twinkle:      (t) => arp(t, [1568, 2093, 1760, 2349], 0.12, { dur: 0.5, vol: 0.08 }),
+                sunrise:      (t) => arp(t, [392, 494, 587, 784], 0.16, { type: 'triangle', dur: 0.6, vol: 0.12 })
+            };
+
+            function updateButton() {
+                const btn = document.getElementById('sound-toggle');
+                if (btn) btn.innerText = enabled ? '🔊' : '🔇';
+            }
+
+            // 효과음 재생 (delay초 뒤에 시작)
+            function play(name, delay) {
+                if (!enabled) return;
+                const fn = sounds[name];
+                if (!fn) return;
+                try {
+                    const c = ensure();
+                    if (!c) return;
+                    if (c.state === 'suspended') c.resume();
+                    fn(c.currentTime + (delay || 0) + 0.01);
+                } catch (e) {
+                    console.warn('효과음 재생 실패:', name, e);
+                }
+            }
+
+            // 첫 사용자 입력에서 오디오를 깨움 (브라우저 자동재생 제한 대응)
+            function unlock() {
+                try {
+                    const c = ensure();
+                    if (c && c.state === 'suspended') c.resume();
+                } catch (e) { /* 무시 */ }
+            }
+
+            function toggle() {
+                enabled = !enabled;
+                try { localStorage.setItem('survival_casino_sound', enabled ? 'on' : 'off'); } catch (e) { /* 무시 */ }
+                updateButton();
+                if (enabled) play('click');
+                return enabled;
+            }
+
+            updateButton();
+            return { play, unlock, toggle, isOn: () => enabled, names: Object.keys(sounds) };
+        })();
+
+        // 첫 클릭/키 입력에서 오디오 활성화 (캡처 단계라 다른 곳에서 이벤트를 막아도 동작)
+        ['pointerdown', 'keydown'].forEach(type => window.addEventListener(type, () => SFX.unlock(), true));
+        // M 키로 효과음 켜기/끄기 (입력창에 타이핑 중일 때는 제외)
+        window.addEventListener('keydown', (e) => {
+            const tag = e.target && e.target.tagName;
+            if ((e.key === 'm' || e.key === 'M') && !e.repeat && tag !== 'INPUT' && tag !== 'TEXTAREA') SFX.toggle();
+        });
+        // 가이드 단축키: H = 열기/닫기, 열려 있을 때 ESC = 닫기, ← → = 탭 이동 (캡처 단계에서 처리해 게임 조작과 겹치지 않게 함)
+        window.addEventListener('keydown', (e) => {
+            const tag = e.target && e.target.tagName;
+            const guideOpen = !document.getElementById('modal-guide').classList.contains('hidden');
+            const isH = (e.key === 'h' || e.key === 'H') && !e.repeat;
+            if (guideOpen) {
+                if (e.key === 'Escape') { e.stopImmediatePropagation(); closeGuideModal(); }
+                else if (e.key === 'ArrowRight') { guideStepTab(1); }
+                else if (e.key === 'ArrowLeft') { guideStepTab(-1); }
+                else if (isH) { closeGuideModal(); }
+            } else if (isH && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+                toggleGuide();
+            }
+        }, true);
+
+        // ==========================================
+        // 1. 설정 및 상수 객체 / 계산 함수
+        // ==========================================
+        const GAME_CONFIG = {
+            START_MONEY: 1000,
+            SPRINT_MULTIPLIER: 3,   // Shift를 누르고 있는 동안 이동속도 배율 (3 = 3배)
+            MIN_BET: 10,            // 슬롯 최소 베팅 금액 ($)
+            BET_UNIT: 10,           // 베팅 금액 단위 ($, 이 단위의 배수만 입력 가능)
+            BLACKJACK_PAYOUT: 1.5,  // 블랙잭(첫 두 장이 21) 승리 시 베팅액에 더해 받는 배수 (1.5 = 3:2)
+            DEALER_STAND_ON: 17,    // 딜러는 이 숫자 이상이면 카드를 더 뽑지 않음 (소프트 17 포함)
+            HOLDEM_SMALL_BLIND: 10, // 홀덤 스몰 블라인드 ($)
+            HOLDEM_BIG_BLIND: 20,   // 홀덤 빅 블라인드 ($, 최소 레이즈 폭의 기준)
+            HOLDEM_MAX_RAISES: 4,   // 한 라운드(프리플랍/플랍/턴/리버)에서 가능한 레이즈 횟수
+            HOLDEM_AI_BLUFF: 0.12,  // 박은찬이 약한 패로 허세(블러프)를 부리는 확률
+            HOLDEM_AI_SIMS: 160,    // 박은찬이 승률을 추정할 때의 시뮬레이션 횟수 (클수록 정확)
+            HOLDEM_AI_READ_RANGE: true, // true면 플레이어의 베팅 행동으로 패의 범위를 좁혀서 판단 (false면 단순 승률만 사용)
+            HOLDEM_AI_ADAPT: true,  // true면 플레이어의 성향(공격성, 폴드 빈도)을 학습해서 허세와 콜 기준을 조절
+            START_GAMES: 3,        // 1일차 필요 판수 (기본 3회)
+            GAMES_STEP: 2,          // 일차별 필요 판수 증가량 (+2회씩)
+            BASE_REQUIRED: 1000,    // 1일차 필요 금액
+            GROWTH_RATE: 2.0,       // 매일 곱해지는 배율 (지수 증가)
+            
+            // 기능 5 가위바위보 설정 상수
+            RPS_LOSS_LIMIT: 5,      // 하루 패배 한도
+            RPS_REWARD: 20,         // 승리 보상 금액 ($)
+            RPS_AI_STRENGTH: 0.5,   // 박은찬이 패턴 예측대로 대응할 확률 (0 = 완전 랜덤, 1 = 항상 대응)
+            RPS_AI_MIN_ROUNDS: 4,   // 패턴 분석을 시작하는 최소 판수
+
+            // 기능 6 시작 연출 시간 (ms)
+            START_SCREEN_LOADING_TIME: 2000,
+            
+            // 기능 4 연출 타이밍 상수 (ms)
+            FADE_DURATION: 500,     // 페이드인/아웃 0.5초
+            MOON_PAUSE_DURATION: 800, // 270도 달 정지 시간 0.8초
+            PHASE1_DURATION: 2000,  // 0 -> 180도 (해가 지는 구간) 2초
+            PHASE2_DURATION: 1200,  // 180 -> 270도 (달이 떠올라 중앙 정지) 1.2초
+            PHASE3_DURATION: 1200,  // 270 -> 360도 (달이 지는 구간) 1.2초
+            PHASE4_DURATION: 1800   // 360 -> 450도 (해가 떠올라 중앙 도달) 1.8초
+        };
+
+        // 취침 텍스트 후보 (기능 4)
+        const SLEEP_MESSAGES = [
+            '한숨 자는 중...',
+            'Zzz...',
+            '내일을 기다리는 중'
+        ];
+
+        // 일차에 따른 필요 금액 계산 함수 (지수함수 & 50$ 단위 반올림)
+        function getRequiredMoney(day) {
+            const rawAmount = GAME_CONFIG.BASE_REQUIRED * Math.pow(GAME_CONFIG.GROWTH_RATE, day - 1);
+            return Math.round(rawAmount / 50) * 50;
+        }
+
+        // 일차에 따른 필요 게임 횟수 계산 함수
+        function getRequiredGames(day) {
+            return GAME_CONFIG.START_GAMES + (day - 1) * GAME_CONFIG.GAMES_STEP;
+        }
+
+        const SLOT_CONFIG = {
+            symbols: ['🍒', '🍋', '🔔', '💎', '7️⃣'],
+            multipliers3: {
+                '🍒': 10,
+                '🍋': 15,
+                '🔔': 20,
+                '💎': 30,
+                '7️⃣': 50
+            },
+            multipliers2: {
+                '🍒': 2,
+                '🍋': 2,
+                '🔔': 2,
+                '💎': 3,
+                '7️⃣': 3
+            }
+        };
+
+        // ==========================================
+        // 2. 게임 상태 관리 변수
+        // ==========================================
+        let money = GAME_CONFIG.START_MONEY;
+        let currentDay = 1;
+        let bestDay = 1;
+        let todayPlayCount = 0; // 오늘 플레이한 횟수
+        let todayRpsLossCount = 0; // 오늘 가위바위보 패배 횟수
+        let isModalOpen = false;
+        let isTransitioning = false; // 일차 전환 연출 잠금 변수
+        let isDayEnding = false;        // 버그 수정: 하루 종료 판정부터 전환 연출이 끝날 때까지의 잠금
+        let isGameOverShowing = false;  // 버그 수정: 게임오버 중복 호출 방지
+        let isGameStarted = false; // 게임 시작 여부 (시작 화면 관리)
+        let activeBuilding = null;
+        let currentBet = 10;
+        let isSpinning = false;
+        let rpsAnimating = false;
+        let rpsHistory = [];   // 플레이어의 가위바위보 기록 [{ move, result }] (플레이어 기준 결과)
+        let guidePausedGame = false; // 게임 중에 연 가이드가 게임을 잠시 멈춰 둔 상태인지
+        const GUIDE_TABS = ['goal', 'ctrl', 'games', 'tips'];
+
+        // 블랙잭 상태
+        let bjDeck = [];
+        let bjPlayer = [];          // 플레이어 카드
+        let bjDealer = [];          // 딜러 카드 (두 번째 카드는 공개 전까지 가려짐)
+        let bjBet = 0;              // 이번 판 베팅액 (더블다운하면 두 배)
+        let bjState = 'idle';       // 'idle' | 'dealing' | 'player' | 'dealer'
+        let bjInProgress = false;   // 판 시작부터 정산 끝까지 true (이 동안 팝업을 닫을 수 없음)
+        let bjHoleHidden = true;    // 딜러의 두 번째 카드를 가리는지 여부
+        let bjRunId = 0;            // 초기화되면 늦게 도착하는 타이머를 무시하기 위한 번호
+
+        // 룰렛 상태
+        let rlBets = [];            // 올려둔 베팅 [{ key, label, numbers, mult, amount }]
+        let rlLastBets = [];        // 직전 스핀에서 올렸던 베팅 (반복용)
+        let rlSelected = new Set(); // 테이블에서 고른 숫자 (인사이드 베팅용)
+        let rlHistory = [];         // 최근 결과
+        let rlSpinning = false;     // 스핀 진행 중 (이 동안 팝업을 닫을 수 없음)
+        let rlRunId = 0;            // 초기화되면 늦게 도착하는 타이머를 무시하기 위한 번호
+
+        // 홀덤(1:1) 상태
+        let hdDeck = [];
+        let hdPlayerHole = [];      // 플레이어의 홀 카드 2장
+        let hdOppHole = [];         // 박은찬의 홀 카드 2장 (쇼다운 전까지 가려짐)
+        let hdBoard = [];           // 공용 카드 (최대 5장)
+        let hdPot = 0;              // 팟 (양쪽이 낸 칩의 합)
+        let hdOppStack = 0;         // 박은찬이 가진 남은 칩 (플레이어 소지금은 money)
+        let hdStreet = 'idle';      // 'idle' | 'preflop' | 'flop' | 'turn' | 'river' | 'showdown' | 'done'
+        let hdStreetBet = { player: 0, opp: 0 };   // 이번 라운드에 낸 칩
+        let hdTotalIn = { player: 0, opp: 0 };     // 이번 핸드에 낸 칩 합계
+        let hdActed = { player: false, opp: false };
+        let hdLastRaise = 20;       // 직전 레이즈 폭 (최소 레이즈 계산용)
+        let hdRaisesThisStreet = 0;
+        let hdButton = 'opp';       // 버튼(딜러)을 가진 쪽. 헤즈업에서는 버튼이 스몰 블라인드
+        let hdToAct = null;         // 지금 행동할 차례 ('player' | 'opp' | null)
+        let hdInProgress = false;   // 핸드 시작부터 정산 끝까지 true (이 동안 팝업을 닫을 수 없음)
+        let hdOppHidden = true;
+        let hdNotes = { player: '', opp: '' };     // 각자의 마지막 행동 표시
+        let hdRunId = 0;            // 초기화되면 늦게 도착하는 타이머를 무시하기 위한 번호
+        let hdPlayerActs = [];      // 이번 핸드에서 플레이어가 한 행동 [{ street, type: 'raise'|'call'|'check', frac }] (박은찬이 패를 추리는 데 사용)
+        let hdProfile = { acts: 0, faced: 0, folds: 0, aggr: 0 };   // 플레이어 성향 통계: 전체 행동 수, 베팅을 마주한 수, 그때 폴드한 수, 레이즈 수 (게임 한 판 동안 누적)
+
+        // UI 요소 참조
+        const currentMoneyLeftEl = document.getElementById('current-money-left');
+        const currentMoneyRightEl = document.getElementById('current-money-right');
+        const targetMoneyEl = document.getElementById('target-money');
+        const dayDisplayEl = document.getElementById('day-display');
+        const playCountLeftEl = document.getElementById('play-count-left');
+        const playCountMaxEl = document.getElementById('play-count-max');
+
+        // 상징물 위치 (퍼센트 기반)
+        const buildings = [
+            { id: 'slot', name: '슬롯머신', el: document.getElementById('building-slot'), xPct: 0.20, yPct: 0.25 },
+            { id: 'blackjack', name: '블랙잭', el: document.getElementById('building-blackjack'), xPct: 0.40, yPct: 0.25 },
+            { id: 'roulette', name: '룰렛', el: document.getElementById('building-roulette'), xPct: 0.60, yPct: 0.25 },
+            { id: 'holdem', name: '홀덤', el: document.getElementById('building-holdem'), xPct: 0.80, yPct: 0.25 }
+        ];
+
+        // NPC 박은찬 위치 (우측 하단 구석)
+        const npcEunchan = {
+            name: '박은찬',
+            el: document.getElementById('npc-eunchan'),
+            xPct: 0.88,
+            yPct: 0.85
+        };
+
+        // ==========================================
+        // LocalStorage 최고 기록 연동 함수 (try/catch 보호)
+        // ==========================================
+        function loadBestDay() {
+            try {
+                const saved = localStorage.getItem('survival_casino_best_day');
+                if (saved) {
+                    bestDay = parseInt(saved, 10) || 1;
+                }
+            } catch (e) {
+                console.warn('LocalStorage unavailable:', e);
+            }
+        }
+
+        function saveBestDay() {
+            try {
+                const currentSaved = localStorage.getItem('survival_casino_best_day');
+                const prevBest = currentSaved ? parseInt(currentSaved, 10) || 1 : 1;
+                if (bestDay > prevBest) {
+                    localStorage.setItem('survival_casino_best_day', bestDay.toString());
+                }
+            } catch (e) {
+                console.warn('LocalStorage unavailable:', e);
+            }
+        }
+
+        // 시작 화면 최고 기록 레이블 업데이트
+        function updateStartScreenBestUI() {
+            loadBestDay();
+            const bestEl = document.getElementById('start-screen-best');
+            const bestDaySpan = document.getElementById('start-best-day');
+            if (bestDay > 1) {
+                bestDaySpan.innerText = `${bestDay}일차`;
+                bestEl.classList.remove('hidden');
+            } else {
+                bestEl.classList.add('hidden');
+            }
+        }
+
+        // ==========================================
+        // [기능 6] 게임 시작 및 가이드 연출 관리
+        // ==========================================
+        // 가이드 탭 전환 (goal | ctrl | games | tips)
+        function guideShowTab(name) {
+            if (!GUIDE_TABS.includes(name)) return;
+            GUIDE_TABS.forEach(t => {
+                const on = t === name;
+                document.getElementById('guide-panel-' + t).classList.toggle('hidden', !on);
+                const btn = document.getElementById('guide-tab-' + t);
+                btn.classList.toggle('bg-amber-500', on);
+                btn.classList.toggle('text-slate-950', on);
+                btn.classList.toggle('text-slate-300', !on);
+                btn.classList.toggle('hover:bg-slate-800', !on);
+                btn.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+            document.getElementById('guide-scroll').scrollTop = 0;
+        }
+
+        // ← → 키로 이웃 탭으로 이동
+        function guideStepTab(dir) {
+            const current = GUIDE_TABS.findIndex(t => !document.getElementById('guide-panel-' + t).classList.contains('hidden'));
+            const next = (current + dir + GUIDE_TABS.length) % GUIDE_TABS.length;
+            guideShowTab(GUIDE_TABS[next]);
+            SFX.play('click');
+        }
+
+        // 가이드 안의 숫자와 표를 현재 게임 설정값으로 채움 (설정을 바꾸면 가이드도 자동으로 따라감)
+        function fillGuideValues() {
+            const C = GAME_CONFIG;
+            const set = (id, text) => { document.getElementById(id).innerText = text; };
+
+            set('gd-start-money', C.START_MONEY.toLocaleString() + '$');
+            set('gd-growth', C.GROWTH_RATE);
+            set('gd-tip-growth', C.GROWTH_RATE);
+            set('gd-games-step', C.GAMES_STEP);
+            set('gd-sprint', C.SPRINT_MULTIPLIER);
+            set('gd-min-bet', C.MIN_BET + '$');
+            set('gd-bet-unit', C.BET_UNIT + '$');
+            set('gd-dealer', C.DEALER_STAND_ON);
+            set('gd-bj-payout', C.BLACKJACK_PAYOUT);
+            set('gd-hd-blinds', C.HOLDEM_SMALL_BLIND + '/' + C.HOLDEM_BIG_BLIND + '$');
+            set('gd-rps-reward', C.RPS_REWARD + '$');
+            set('gd-rps-limit', C.RPS_LOSS_LIMIT);
+
+            const m3 = Object.values(SLOT_CONFIG.multipliers3), m2 = Object.values(SLOT_CONFIG.multipliers2);
+            set('gd-slot-3', Math.min(...m3) + '~' + Math.max(...m3) + '배');
+            set('gd-slot-2', Math.min(...m2) + '~' + Math.max(...m2) + '배');
+
+            // 일차별 필요 금액 / 하루 판 수 표
+            const rows = [];
+            for (let d = 1; d <= 6; d++) {
+                rows.push(`<tr class="${d % 2 ? 'bg-slate-900/60' : ''}"><td class="py-1 px-2 font-bold text-amber-300">${d}일차</td>` +
+                          `<td class="py-1 px-2 text-right">${getRequiredMoney(d).toLocaleString()}$</td>` +
+                          `<td class="py-1 px-2 text-right">${getRequiredGames(d)}판</td></tr>`);
+            }
+            rows.push('<tr><td colspan="3" class="py-1 px-2 text-center text-slate-500">…</td></tr>');
+            document.getElementById('gd-day-table').innerHTML = rows.join('');
+
+            // 룰렛 배당
+            const P = ROULETTE_PAYOUT;
+            const chips = [['숫자 1개', P.straight], ['2개', P.split], ['3개', P.street], ['4개', P.corner], ['6개', P.line], ['다스·컬럼', P.dozen], ['색·홀짝·1-18·19-36', P.even]];
+            document.getElementById('gd-rl-payouts').innerHTML = chips.map(([name, v]) =>
+                `<span class="inline-flex items-center gap-1 bg-slate-800 rounded-md px-2 py-0.5 text-xs">${name} <b class="text-amber-300">${v}:1</b></span>`
+            ).join('');
+
+            // 첫날 팁: 시작 소지금과 첫날 필요 금액의 차이에 맞춰 문구를 만듦
+            const diff = C.START_MONEY - getRequiredMoney(1);
+            document.getElementById('gd-tip-day1').innerText = diff > 0
+                ? `1일차 필요 금액은 ${getRequiredMoney(1).toLocaleString()}$라서 ${diff.toLocaleString()}$ 여유가 있어요. 그래도 방심은 금물!`
+                : diff === 0
+                    ? `1일차 필요 금액(${getRequiredMoney(1).toLocaleString()}$)이 시작 소지금과 같아서 한 푼도 잃으면 안 돼요. 가위바위보로 여유를 먼저 만들어 보세요.`
+                    : `1일차에는 시작 소지금보다 ${(-diff).toLocaleString()}$를 더 벌어야 해요.`;
+        }
+
+        function openGuideModal() {
+            fillGuideValues();
+            guideShowTab('goal');
+            document.getElementById('modal-guide').classList.remove('hidden');
+
+            // 게임 중에 열었다면 가이드를 보는 동안 캐릭터가 움직이지 않게 잠시 멈춤
+            if (isGameStarted && !isModalOpen) {
+                keys.w = keys.a = keys.s = keys.d = false;
+                isModalOpen = true;
+                guidePausedGame = true;
+            }
+            SFX.play('open');
+        }
+
+        function closeGuideModal() {
+            const modal = document.getElementById('modal-guide');
+            if (!modal.classList.contains('hidden')) SFX.play('close');
+            modal.classList.add('hidden');
+            if (guidePausedGame) {   // 게임 중에 연 가이드를 닫으면 다시 움직일 수 있음
+                isModalOpen = false;
+                guidePausedGame = false;
+            }
+        }
+
+        // 가이드 열기/닫기 (H 키, 📖 버튼). 게임 중에는 다른 팝업이나 연출이 없을 때만 열 수 있음
+        function toggleGuide() {
+            if (!document.getElementById('modal-guide').classList.contains('hidden')) {
+                closeGuideModal();
+                return;
+            }
+            if (isGameStarted && (isModalOpen || isTransitioning || isDayEnding)) return;
+            if (!isGameStarted && !document.getElementById('game-start-overlay').classList.contains('hidden')) return;   // 시작 로딩 연출 중
+            openGuideModal();
+        }
+
+        // "시작하기" 버튼 클릭 시 연출
+        function startGameFromMenu() {
+            const startScreen = document.getElementById('start-screen');
+            const loadingOverlay = document.getElementById('game-start-overlay');
+
+            // 1) 시작 화면 숨기기
+            startScreen.classList.add('hidden');
+            SFX.play('gameStart');
+
+            // 2) 검은 화면 로딩 연출 페이드인 ("도박장으로 이동중...")
+            loadingOverlay.classList.remove('hidden');
+            SFX.play('whoosh');
+            requestAnimationFrame(() => {
+                loadingOverlay.classList.remove('opacity-0');
+                loadingOverlay.classList.add('opacity-100');
+            });
+
+            // 3) 지정된 시간(2초) 후 페이드아웃 및 1일차 시작
+            setTimeout(() => {
+                loadingOverlay.classList.remove('opacity-100');
+                loadingOverlay.classList.add('opacity-0');
+
+                setTimeout(() => {
+                    loadingOverlay.classList.add('hidden');
+                    isGameStarted = true;
+                    
+                    // 게임 데이터 초기화 및 1일차 시작
+                    fullResetGameData();
+                    showDayToast('1일차 시작!');
+                }, 500);
+            }, GAME_CONFIG.START_SCREEN_LOADING_TIME);
+        }
+
+        // 모든 게임 상태 및 타이머 초기화 (시작 화면 복귀용)
+        function fullResetGameData() {
+            currentDay = 1;
+            todayPlayCount = 0;
+            todayRpsLossCount = 0;
+            money = GAME_CONFIG.START_MONEY;
+            isTransitioning = false;
+            isDayEnding = false;        // 버그 수정: 잠금 상태 초기화
+            isGameOverShowing = false;  // 버그 수정: 게임오버 중복 방지 상태 초기화
+            isSpinning = false;
+            rpsAnimating = false;
+            rpsHistory = [];            // 박은찬이 분석하던 패턴 기록 초기화
+            bjRunId += 1;               // 진행 중이던 블랙잭 타이머 무효화
+            bjInProgress = false;
+            bjState = 'idle';
+            rlRunId += 1;               // 진행 중이던 룰렛 타이머 무효화
+            rlSpinning = false;
+            rlBets = [];
+            rlLastBets = [];
+            rlSelected.clear();
+            hdRunId += 1;               // 진행 중이던 홀덤 타이머 무효화
+            hdInProgress = false;
+            hdStreet = 'idle';
+            hdToAct = null;
+            hdButton = 'opp';           // 새 게임의 첫 핸드는 플레이어가 버튼(스몰 블라인드)
+            hdPlayerActs = [];
+            hdProfile = { acts: 0, faced: 0, folds: 0, aggr: 0 };   // 새 게임이면 플레이어 성향 학습도 처음부터
+
+            updateDayUI();
+            updatePlayCountUI();
+            updateMoney(money);
+
+            // 열려 있는 모든 모달 및 팝업 닫기
+            closeModal(true);
+            closeGuideModal();
+            document.getElementById('modal-ending').classList.add('hidden');
+            isModalOpen = false;
+
+            // 캐릭터 위치 중앙 하단으로 리셋
+            resetPlayerPosition();
+            loadBestDay();
+        }
+
+        // ==========================================
+        // 3. 금액 및 상태 업데이트 함수
+        // ==========================================
+        function updateMoney(amount) {
+            money = amount;
+            currentMoneyLeftEl.innerText = money.toLocaleString();
+            currentMoneyRightEl.innerText = money.toLocaleString();
+            // 버그 수정: 파산(소지금 0 이하) 검사는 여기서 하지 않음.
+            // 슬롯 결과가 확정된 뒤 spinSlot()에서 검사한다.
+        }
+
+        function updatePlayCountUI() {
+            playCountLeftEl.innerText = todayPlayCount;
+            playCountMaxEl.innerText = getRequiredGames(currentDay);
+        }
+
+        function updateDayUI() {
+            dayDisplayEl.innerText = `${currentDay}일차`;
+            targetMoneyEl.innerText = getRequiredMoney(currentDay).toLocaleString();
+        }
+
+        // 베팅 판수 추가 및 하루 종료 판정
+        function recordGamePlay() {
+            // 버그 수정: 하루 종료 처리 중이거나 연출 중이면 판수를 올리지 않음
+            if (isDayEnding || isTransitioning || !isGameStarted) return;
+
+            todayPlayCount += 1;
+            updatePlayCountUI();
+
+            // 목표 판수에 다다르면 일차 종료 검사 진행
+            if (todayPlayCount >= getRequiredGames(currentDay)) {
+                evaluateDayEnd();
+            }
+        }
+
+        // 하루 종료 시 소지금 대 필요 금액 검사
+        function evaluateDayEnd() {
+            // 버그 수정: 이미 하루 종료 처리 중이면 중복 실행하지 않음
+            if (isDayEnding) return;
+            isDayEnding = true; // 1초 대기가 시작되기 전에 즉시 잠금
+
+            const required = getRequiredMoney(currentDay);
+
+            if (money >= required) {
+                // 성공: 1초 간 결과 팝업 표시 후 일차 전환 연출 실행
+                setTimeout(() => {
+                    startDayTransition();
+                }, 1000);
+            } else {
+                // 실패: [기능 6] 수정된 게임 종료 처리 실행
+                showGameOver(`소지금(${money.toLocaleString()}$)이 필요 금액(${required.toLocaleString()}$)에 미달했습니다.`);
+            }
+        }
+
+        // ==========================================
+        // [기능 4] 일차 전환 연출 시스템 (단일 타임라인 기반 연속 회전)
+        // ==========================================
+        function startDayTransition() {
+            // 버그 수정: 이미 전환 중이거나 게임이 끝난 상태면 시작하지 않음
+            if (isTransitioning || !isGameStarted) return;
+            isTransitioning = true;
+            console.log('[일차 전환] 시작 - 현재', currentDay, '일차');
+            SFX.play('sunset');
+
+            // 1) 열려 있는 모든 팝업 및 프롬프트 즉시 닫기
+            closeModal(true);
+            document.querySelectorAll('.prompt-badge').forEach(el => el.classList.add('hidden'));
+            
+            const toast = document.getElementById('day-toast');
+            toast.classList.add('opacity-0', '-translate-y-4', 'pointer-events-none');
+
+            // 2) 플레이어 위치, 회전 각도, 눌린 키 초기화
+            resetPlayerPosition();
+
+            // 3) 랜덤 취침 메시지 선택
+            const randomMsg = SLEEP_MESSAGES[Math.floor(Math.random() * SLEEP_MESSAGES.length)];
+            document.getElementById('sleep-text').innerText = randomMsg;
+
+            const overlay = document.getElementById('day-transition-overlay');
+            const rod = document.getElementById('sun-moon-rod');
+
+            // 오버레이 페이드인
+            overlay.classList.remove('hidden');
+            requestAnimationFrame(() => {
+                overlay.classList.remove('opacity-0');
+                overlay.classList.add('opacity-100');
+            });
+
+            // 단일 타임라인 기반 연속 회전 (총 450도 회전, 270도에서 정지)
+            const startTime = performance.now();
+            const totalDuration = GAME_CONFIG.PHASE1_DURATION + GAME_CONFIG.PHASE2_DURATION + 
+                                  GAME_CONFIG.MOON_PAUSE_DURATION + GAME_CONFIG.PHASE3_DURATION + 
+                                  GAME_CONFIG.PHASE4_DURATION;
+
+            let dataUpdated = false;
+
+            function animate(currentTime) {
+                const elapsed = currentTime - startTime;
+
+                if (elapsed < GAME_CONFIG.PHASE1_DURATION + GAME_CONFIG.PHASE2_DURATION) {
+                    const progress = elapsed / (GAME_CONFIG.PHASE1_DURATION + GAME_CONFIG.PHASE2_DURATION);
+                    const angle = 90 - (progress * 270);
+                    rod.style.transform = `rotate(${angle}deg)`;
+                    requestAnimationFrame(animate);
+
+                } else if (elapsed < GAME_CONFIG.PHASE1_DURATION + GAME_CONFIG.PHASE2_DURATION + GAME_CONFIG.MOON_PAUSE_DURATION) {
+                    rod.style.transform = `rotate(-180deg)`;
+
+                    if (!dataUpdated) {
+                        dataUpdated = true; // 버그 수정: 한 번의 전환에서 일차 증가는 정확히 한 번만 실행
+                        currentDay += 1;
+                        console.log('[일차 전환] 일차 증가 ->', currentDay, '일차');
+                        SFX.play('twinkle');
+                        if (currentDay > bestDay) {
+                            bestDay = currentDay;
+                            saveBestDay();
+                        }
+                        todayPlayCount = 0;
+                        todayRpsLossCount = 0; // 일차가 바뀌면 가위바위보 패배 횟수 초기화
+
+                        updateDayUI();
+                        updatePlayCountUI();
+                    }
+                    requestAnimationFrame(animate);
+
+                } else if (elapsed < totalDuration) {
+                    const phase2Elapsed = elapsed - (GAME_CONFIG.PHASE1_DURATION + GAME_CONFIG.PHASE2_DURATION + GAME_CONFIG.MOON_PAUSE_DURATION);
+                    const phase2Total = GAME_CONFIG.PHASE3_DURATION + GAME_CONFIG.PHASE4_DURATION;
+                    const progress = phase2Elapsed / phase2Total;
+
+                    const angle = -180 - (progress * 180);
+                    rod.style.transform = `rotate(${angle}deg)`;
+                    requestAnimationFrame(animate);
+
+                } else {
+                    rod.style.transform = `rotate(-360deg)`;
+                    
+                    overlay.classList.remove('opacity-100');
+                    overlay.classList.add('opacity-0');
+
+                    setTimeout(() => {
+                        overlay.classList.add('hidden');
+                        isTransitioning = false;
+                        isDayEnding = false; // 버그 수정: 연출이 완전히 끝난 뒤에만 잠금 해제
+                        console.log('[일차 전환] 종료');
+                        SFX.play('sunrise');
+                        showDayToast(`${currentDay}일차 시작!`);
+                    }, GAME_CONFIG.FADE_DURATION);
+                }
+            }
+
+            setTimeout(() => {
+                requestAnimationFrame(animate);
+            }, GAME_CONFIG.FADE_DURATION);
+        }
+
+        // 플레이어 위치 및 상태 초기화 함수
+        function resetPlayerPosition() {
+            keys.w = keys.a = keys.s = keys.d = false;
+            rotationAngle = 0;
+
+            const areaRect = gameArea.getBoundingClientRect();
+            posX = areaRect.width / 2;
+            posY = areaRect.height * 0.75;
+
+            playerGroup.style.left = `${posX}px`;
+            playerGroup.style.top = `${posY}px`;
+            playerGroup.style.transform = `translate(-50%, -50%) rotate(0deg)`;
+        }
+
+        // 화면 중앙 상단 토스트 알림
+        function showDayToast(msg) {
+            const toast = document.getElementById('day-toast');
+            document.getElementById('day-toast-text').innerText = msg;
+            toast.classList.remove('opacity-0', '-translate-y-4', 'pointer-events-none');
+            toast.classList.add('opacity-100', 'translate-y-0');
+
+            setTimeout(() => {
+                toast.classList.remove('opacity-100', 'translate-y-0');
+                toast.classList.add('opacity-0', '-translate-y-4', 'pointer-events-none');
+            }, 2000);
+        }
+
+        // [기능 6] 게임 종료 처리 (게임오버 문구 3초 표시 후 시작 화면으로 강제 이동)
+        function showGameOver(reason) {
+            // 버그 수정: 게임오버가 이미 진행 중이면 중복 호출하지 않음
+            if (isGameOverShowing) return;
+            isGameOverShowing = true;
+            isDayEnding = true;
+            SFX.play('gameOver');
+
+            closeModal(true);
+            isModalOpen = true;
+
+            // 최고 기록 갱신 확인 및 저장
+            if (currentDay > bestDay) {
+                bestDay = currentDay;
+            }
+            saveBestDay();
+
+            document.getElementById('ending-desc').innerText = reason;
+            document.getElementById('final-day').innerText = `${currentDay}일차`;
+            document.getElementById('best-day').innerText = `${bestDay}일차`;
+
+            // 게임오버 모달 열기
+            document.getElementById('modal-ending').classList.remove('hidden');
+
+            // 약 3초 동안 게임오버 화면을 보여준 뒤 자동으로 시작 화면으로 강제 이동
+            setTimeout(() => {
+                document.getElementById('modal-ending').classList.add('hidden');
+                isModalOpen = false;
+                isGameStarted = false;
+
+                // 모든 상태 및 타이머 완전 초기화 후 시작 화면 노출
+                fullResetGameData();
+                document.getElementById('start-screen').classList.remove('hidden');
+                updateStartScreenBestUI();
+            }, 3000);
+        }
+
+        // 초기화 실행
+        loadBestDay();
+        updateStartScreenBestUI();
+        updateDayUI();
+        updateMoney(GAME_CONFIG.START_MONEY);
+        updatePlayCountUI();
+
+        // ==========================================
+        // 4. WASD 이동 및 상호작용 검사
+        // ==========================================
+        const playerGroup = document.getElementById('player-group');
+        const gameArea = document.getElementById('game-area');
+
+        let posX = window.innerWidth / 2;
+        let posY = (window.innerHeight - 64) * 0.75;
+        
+        const speed = 2.5;
+        const keys = { w: false, a: false, s: false, d: false };
+        let rotationAngle = 0;
+
+        // Shift를 누르고 있는 동안 달리기 (이동속도 SPRINT_MULTIPLIER배)
+        // 모든 키 이벤트의 shiftKey 값을 따라가므로, 다른 키를 누른 채로 Shift를 눌렀다 떼도 정확히 반영됨
+        let shiftHeld = false;
+        const syncShift = (e) => { shiftHeld = !!e.shiftKey; };
+        window.addEventListener('keydown', syncShift, true);
+        window.addEventListener('keyup', syncShift, true);
+        window.addEventListener('blur', () => { shiftHeld = false; });   // 창을 벗어나면 해제 (Shift를 뗀 것을 못 받는 경우 대비)
+
+        window.addEventListener('keydown', (e) => {
+            // 게임이 시작되지 않았거나 연출 중일 때 키 입력 차단
+            if (!isGameStarted || isTransitioning) return;
+
+            const key = e.key.toLowerCase();
+            if (keys.hasOwnProperty(key)) keys[key] = true;
+
+            // E 키 상호작용 (상징물 또는 NPC 박은찬)
+            if (key === 'e' && !isModalOpen && activeBuilding) {
+                openBuildingModal(activeBuilding);
+            }
+
+            // ESC 키 모달 닫기
+            if (e.key === 'Escape' && isModalOpen && !isSpinning && !rpsAnimating) {
+                closeModal();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (!isGameStarted || isTransitioning) return;
+            const key = e.key.toLowerCase();
+            if (keys.hasOwnProperty(key)) keys[key] = false;
+        });
+
+        function gameLoop() {
+            if (isGameStarted && !isModalOpen && !isTransitioning) {
+                let dx = 0;
+                let dy = 0;
+
+                if (keys.w) dy -= 1;
+                if (keys.s) dy += 1;
+                if (keys.a) dx -= 1;
+                if (keys.d) dx += 1;
+
+                if (dx !== 0 || dy !== 0) {
+                    const length = Math.sqrt(dx * dx + dy * dy);
+                    const moveSpeed = shiftHeld ? speed * GAME_CONFIG.SPRINT_MULTIPLIER : speed;   // Shift를 누르면 달리기
+                    dx = (dx / length) * moveSpeed;
+                    dy = (dy / length) * moveSpeed;
+
+                    rotationAngle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+
+                    const areaRect = gameArea.getBoundingClientRect();
+                    const radius = 20;
+
+                    posX = Math.max(radius, Math.min(areaRect.width - radius, posX + dx));
+                    posY = Math.max(radius, Math.min(areaRect.height - radius, posY + dy));
+                }
+
+                playerGroup.style.left = `${posX}px`;
+                playerGroup.style.top = `${posY}px`;
+                playerGroup.style.transform = `translate(-50%, -50%) rotate(${rotationAngle}deg)`;
+
+                // 상징물 및 NPC 거리 체크
+                checkBuildingProximity();
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 플레이어와 상징물/NPC 사이의 거리 체크 (가장 가까운 대상 1개 선택)
+        function checkBuildingProximity() {
+            if (!isGameStarted || isTransitioning) return;
+
+            const areaRect = gameArea.getBoundingClientRect();
+            let targets = [];
+
+            // 1) 건물 3종 거리 측정
+            buildings.forEach(b => {
+                const bX = areaRect.width * b.xPct;
+                const bY = areaRect.height * b.yPct;
+                const dist = Math.hypot(posX - bX, posY - bY);
+                targets.push({ type: 'building', obj: b, dist: dist });
+            });
+
+            // 2) NPC 박은찬 거리 측정
+            const npcX = areaRect.width * npcEunchan.xPct;
+            const npcY = areaRect.height * npcEunchan.yPct;
+            const npcDist = Math.hypot(posX - npcX, posY - npcY);
+            targets.push({ type: 'npc', obj: npcEunchan, dist: npcDist });
+
+            // 가장 가까운 대상 찾기 (반경 75px 이내)
+            targets.sort((a, b) => a.dist - b.dist);
+            const nearest = targets[0];
+
+            // 모든 프롬프트 숨기기
+            buildings.forEach(b => {
+                const p = b.el.querySelector('.prompt-badge');
+                if (p) p.classList.add('hidden');
+            });
+            const npcP = npcEunchan.el.querySelector('.prompt-badge');
+            if (npcP) npcP.classList.add('hidden');
+
+            activeBuilding = null;
+
+            if (nearest && nearest.dist < 75) {
+                if (nearest.type === 'building') {
+                    activeBuilding = nearest.obj;
+                    const p = nearest.obj.el.querySelector('.prompt-badge');
+                    if (p) p.classList.remove('hidden');
+                } else if (nearest.type === 'npc') {
+                    activeBuilding = { id: 'rps', name: '박은찬', el: nearest.obj.el };
+                    if (npcP) npcP.classList.remove('hidden');
+                }
+            }
+        }
+
+        window.addEventListener('resize', () => {
+            const areaRect = gameArea.getBoundingClientRect();
+            posX = Math.min(posX, areaRect.width - 20);
+            posY = Math.min(posY, areaRect.height - 20);
+        });
+
+        requestAnimationFrame(gameLoop);
+
+        // ==========================================
+        // 5. 모달 및 미니게임 조작 로직 (슬롯 및 RPS)
+        // ==========================================
+        function openBuildingModal(building) {
+            // 버그 수정: 하루 종료 처리 중에는 새 모달을 열 수 없음
+            if (!isGameStarted || isTransitioning || isDayEnding) return;
+            isModalOpen = true;
+            SFX.play('open');
+            keys.w = keys.a = keys.s = keys.d = false;
+
+            if (building.id === 'slot') {
+                document.getElementById('modal-slot').classList.remove('hidden');
+                initSlotBetInput();
+            } else if (building.id === 'holdem') {
+                document.getElementById('modal-holdem').classList.remove('hidden');
+                initHoldemModal();
+            } else if (building.id === 'roulette') {
+                document.getElementById('modal-roulette').classList.remove('hidden');
+                initRouletteModal();
+            } else if (building.id === 'blackjack') {
+                document.getElementById('modal-blackjack').classList.remove('hidden');
+                initBlackjackModal();
+            } else if (building.id === 'rps') {
+                // [기능 5] 가위바위보 모달 열기
+                updateRpsModalUI();
+                document.getElementById('modal-rps').classList.remove('hidden');
+            } else {
+                document.getElementById('modal-ready').classList.remove('hidden');
+                document.getElementById('ready-icon').innerText = ({ blackjack: '🃏', roulette: '🎡', holdem: '♠️' })[building.id] || '🎲';
+                document.getElementById('ready-title').innerText = building.name;
+            }
+        }
+
+        function closeModal(force = false) {
+            // 블랙잭은 판이 진행되는 동안 닫을 수 없음 (이미 건 베팅이 사라지는 것을 막기 위해)
+            if (bjInProgress && !force) {
+                document.getElementById('bj-message').innerText = '⚠️ 진행 중인 판을 끝낸 뒤에 닫을 수 있어요!';
+                return;
+            }
+            // 홀덤은 핸드가 진행되는 동안 닫을 수 없음 (이미 건 칩이 사라지는 것을 막기 위해)
+            if (hdInProgress && !force) {
+                document.getElementById('hd-message').innerText = '⚠️ 진행 중인 핸드를 끝낸 뒤에 닫을 수 있어요!';
+                return;
+            }
+            // 룰렛은 스핀이 진행되는 동안 닫을 수 없음
+            if (rlSpinning && !force) {
+                document.getElementById('rl-message').innerText = '⚠️ 스핀이 끝난 뒤에 닫을 수 있어요!';
+                return;
+            }
+            if ((isSpinning || rpsAnimating) && !force) return;
+            document.getElementById('modal-slot').classList.add('hidden');
+            document.getElementById('modal-blackjack').classList.add('hidden');
+            document.getElementById('modal-roulette').classList.add('hidden');
+            document.getElementById('modal-holdem').classList.add('hidden');
+            document.getElementById('modal-ready').classList.add('hidden');
+            document.getElementById('modal-rps').classList.add('hidden');
+            if (!force && isModalOpen) SFX.play('close');
+            isModalOpen = false;
+        }
+
+        // ==========================================
+        // 슬롯머신: 베팅 금액 직접 입력
+        // ==========================================
+        const betInputEl = document.getElementById('bet-input');
+        const betMaxBtnEl = document.getElementById('bet-max-btn');
+
+        // 숫자만 입력되도록 걸러냄
+        betInputEl.addEventListener('input', () => {
+            betInputEl.value = betInputEl.value.replace(/[^0-9]/g, '');
+        });
+
+        // 입력창에서 누른 키가 게임 조작(WASD, E)으로 전달되지 않게 막음 (ESC는 그대로 전달해서 팝업 닫기 가능)
+        betInputEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') return;
+            e.stopPropagation();
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                spinSlot();
+            }
+        });
+
+        // 소지금 안에서 걸 수 있는 가장 큰 금액 (BET_UNIT의 배수)
+        function getMaxBet() {
+            return Math.floor(money / GAME_CONFIG.BET_UNIT) * GAME_CONFIG.BET_UNIT;
+        }
+
+        // 슬롯 모달을 열 때 입력창 초기화: 이전 금액이 유효하면 유지, 아니면 최소 금액
+        function initSlotBetInput() {
+            let amount = parseInt(betInputEl.value, 10);
+            const valid = !isNaN(amount) && amount >= GAME_CONFIG.MIN_BET &&
+                          amount % GAME_CONFIG.BET_UNIT === 0 && amount <= getMaxBet();
+            if (!valid) amount = GAME_CONFIG.MIN_BET;
+
+            betInputEl.value = String(amount);
+            document.getElementById('bet-rule-text').innerText =
+                `(최소 ${GAME_CONFIG.MIN_BET}$, ${GAME_CONFIG.BET_UNIT}$ 단위)`;
+            document.getElementById('slot-message').innerText = '베팅 금액을 입력하고 스핀을 누르세요!';
+            setTimeout(() => betInputEl.focus(), 50); // E 키 입력이 입력창에 들어가지 않도록 약간 늦게 포커스
+        }
+
+        // "올인" 버튼: 걸 수 있는 최대 금액을 입력창에 채움 (스핀할 때 입력창 값을 읽으므로 소지금이 바뀌어도 항상 최신값 기준)
+        function setMaxBet() {
+            if (isSpinning || isTransitioning || isDayEnding) return;
+            const maxBet = getMaxBet();
+            if (maxBet < GAME_CONFIG.MIN_BET) {
+                document.getElementById('slot-message').innerText = `⚠️ 소지금이 최소 베팅 금액(${GAME_CONFIG.MIN_BET}$)보다 적어요!`;
+                return;
+            }
+            betInputEl.value = String(maxBet);
+        }
+
+        // 입력창 값 검사: { ok, amount } 또는 { ok: false, msg }
+        function readBetAmount(inputEl = betInputEl) {
+            const fail = (msg) => { SFX.play('error'); return { ok: false, msg }; };   // 잘못된 입력이면 경고음
+            const raw = inputEl.value.trim();
+            if (raw === '') return fail('⚠️ 베팅 금액을 입력하세요!');
+
+            const amount = parseInt(raw, 10);
+            if (isNaN(amount) || amount < GAME_CONFIG.MIN_BET) {
+                return fail(`⚠️ 최소 베팅 금액은 ${GAME_CONFIG.MIN_BET}$입니다!`);
+            }
+            if (amount % GAME_CONFIG.BET_UNIT !== 0) {
+                return fail(`⚠️ ${GAME_CONFIG.BET_UNIT}$ 단위로만 입력할 수 있어요!`);
+            }
+            if (amount > money) {
+                return fail(`⚠️ 소지금(${money.toLocaleString()}$)보다 많이 걸 수 없어요!`);
+            }
+            return { ok: true, amount };
+        }
+
+        // 스핀이 끝난 뒤 입력창의 금액이 소지금보다 크면 걸 수 있는 최대 금액으로 낮춤
+        function syncBetInputToMoney() {
+            const current = parseInt(betInputEl.value, 10);
+            const maxBet = getMaxBet();
+            if (!isNaN(current) && current > maxBet && maxBet >= GAME_CONFIG.MIN_BET) {
+                betInputEl.value = String(maxBet);
+            }
+        }
+
+        // 슬롯머신 스핀 동작
+        function spinSlot() {
+            // 하루 종료 처리 중에는 스핀할 수 없음
+            if (isSpinning || isTransitioning || isDayEnding) return;
+
+            // 입력한 베팅 금액 검사 (스핀하는 시점의 값을 읽음)
+            const bet = readBetAmount();
+            if (!bet.ok) {
+                document.getElementById('slot-message').innerText = bet.msg;
+                return;
+            }
+            currentBet = bet.amount;
+            betInputEl.value = String(currentBet); // 앞의 0 등을 정리한 값으로 표시
+
+            updateMoney(money - currentBet);
+            isSpinning = true;
+            betInputEl.disabled = true;
+            betMaxBtnEl.disabled = true;
+            document.getElementById('spin-btn').disabled = true;
+            document.getElementById('spin-btn').classList.add('opacity-50');
+            document.getElementById('slot-message').innerText = "릴이 돌아가는 중...";
+            SFX.play('spinStart');
+
+            const reelEls = [
+                document.getElementById('reel-1'),
+                document.getElementById('reel-2'),
+                document.getElementById('reel-3')
+            ];
+
+            reelEls.forEach(el => el.classList.add('reel-blur'));
+
+            const results = [
+                SLOT_CONFIG.symbols[Math.floor(Math.random() * SLOT_CONFIG.symbols.length)],
+                SLOT_CONFIG.symbols[Math.floor(Math.random() * SLOT_CONFIG.symbols.length)],
+                SLOT_CONFIG.symbols[Math.floor(Math.random() * SLOT_CONFIG.symbols.length)]
+            ];
+
+            // 버그 수정: 이미 멈춘 릴은 연출용 타이머가 덮어쓰지 않도록 멈춤 상태를 기록
+            const reelStopped = [false, false, false];
+
+            let tickCount = 0;
+            const spinInterval = setInterval(() => {
+                if (tickCount++ % 2 === 0) SFX.play('reelTick');   // 릴이 돌아가는 소리 (두 번에 한 번)
+                reelEls.forEach((el, i) => {
+                    if (reelStopped[i]) return;
+                    el.innerText = SLOT_CONFIG.symbols[Math.floor(Math.random() * SLOT_CONFIG.symbols.length)];
+                });
+            }, 80);
+
+            setTimeout(() => {
+                reelStopped[0] = true;
+                SFX.play('reelStop');
+                reelEls[0].classList.remove('reel-blur');
+                reelEls[0].innerText = results[0];
+            }, 800);
+
+            setTimeout(() => {
+                reelStopped[1] = true;
+                SFX.play('reelStop');
+                reelEls[1].classList.remove('reel-blur');
+                reelEls[1].innerText = results[1];
+            }, 1300);
+
+            setTimeout(() => {
+                reelStopped[2] = true;
+                SFX.play('reelStop');
+                clearInterval(spinInterval);
+                reelEls[2].classList.remove('reel-blur');
+                reelEls[2].innerText = results[2];
+
+                calculateSlotResult(results);
+
+                isSpinning = false;
+                betInputEl.disabled = false;
+                betMaxBtnEl.disabled = false;
+                document.getElementById('spin-btn').disabled = false;
+                document.getElementById('spin-btn').classList.remove('opacity-50');
+
+                // 결과가 확정된 뒤에 파산 여부를 검사 (최소 베팅 금액도 못 걸면 파산)
+                // 결과 메시지를 1초 보여준 뒤 게임오버 처리 (판수는 올리지 않음)
+                if (money < GAME_CONFIG.MIN_BET) {
+                    isDayEnding = true;
+                    setTimeout(() => {
+                        showGameOver("소지금이 모두 소진되어 파산했습니다.");
+                    }, 1000);
+                    return;
+                }
+
+                syncBetInputToMoney();
+                recordGamePlay();
+
+            }, 1800);
+        }
+
+        function calculateSlotResult(res) {
+            const msgEl = document.getElementById('slot-message');
+            
+            if (res[0] === res[1] && res[1] === res[2]) {
+                const mult = SLOT_CONFIG.multipliers3[res[0]];
+                const winAmount = currentBet * mult;
+                const net = winAmount - currentBet; // 버그 수정: 베팅액을 뺀 순이익을 표시
+                updateMoney(money + winAmount);
+                msgEl.innerText = `🎉 Jackpot! ${res[0]} 3개 일치 (${mult}배): 순이익 +${net.toLocaleString()}$`;
+                SFX.play('jackpot', 0.25);
+            } else if (res[0] === res[1] || res[1] === res[2] || res[0] === res[2]) {
+                const matchedSymbol = (res[0] === res[1] || res[0] === res[2]) ? res[0] : res[1];
+                const mult = SLOT_CONFIG.multipliers2[matchedSymbol];
+                const winAmount = currentBet * mult;
+                const net = winAmount - currentBet; // 버그 수정: 베팅액을 뺀 순이익을 표시
+                updateMoney(money + winAmount);
+                msgEl.innerText = `✨ 당첨! ${matchedSymbol} 2개 일치 (${mult}배): 순이익 +${net.toLocaleString()}$`;
+                SFX.play('win', 0.25);
+            } else {
+                msgEl.innerText = `💸 꽝! -${currentBet.toLocaleString()}$`;
+                SFX.play('lose', 0.25);
+            }
+        }
+
+        // ==========================================
+        // [블랙잭] 히트 / 스탠드 / 더블다운
+        //  - 매 판 새로 섞은 덱 1벌(52장) 사용
+        //  - 블랙잭은 베팅의 BLACKJACK_PAYOUT배를 추가 지급, 일반 승리는 1배, 무승부는 베팅액 반환
+        //  - 한 판이 끝날 때마다 하루 게임 횟수 +1
+        // ==========================================
+        const BJ_SUITS = ['♠', '♥', '♦', '♣'];
+        const BJ_RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+        const BJ_DEAL_DELAY = 400;     // 카드를 한 장씩 나눠주는 간격 (ms)
+        const BJ_DEALER_DELAY = 700;   // 딜러가 카드를 뽑는 간격 (ms)
+
+        const bjBetInputEl = document.getElementById('bj-bet-input');
+        const bjMaxBtnEl = document.getElementById('bj-max-btn');
+
+        // 숫자만 입력되도록 걸러냄
+        bjBetInputEl.addEventListener('input', () => {
+            bjBetInputEl.value = bjBetInputEl.value.replace(/[^0-9]/g, '');
+        });
+
+        // 입력창에서 누른 키가 게임 조작으로 전달되지 않게 막음 (ESC는 전달, Enter는 딜)
+        bjBetInputEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') return;
+            e.stopPropagation();
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                dealBlackjack();
+            }
+        });
+
+        // 지연 실행: 게임이 초기화(bjRunId 변경)된 뒤에는 실행하지 않음
+        function bjDelay(fn, ms, runId) {
+            setTimeout(() => {
+                if (runId === bjRunId) fn();
+            }, ms);
+        }
+
+        function bjCreateDeck() {
+            const deck = [];
+            BJ_SUITS.forEach(suit => BJ_RANKS.forEach(rank => deck.push({ rank, suit })));
+            for (let i = deck.length - 1; i > 0; i--) {   // Fisher-Yates 셔플
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+            return deck;
+        }
+
+        // 카드 합 계산: A는 11로 세다가 21을 넘으면 1로 바꿈 (soft = 11로 세는 A가 남아 있음)
+        function bjHandValue(cards) {
+            let total = 0, aces = 0;
+            cards.forEach(c => {
+                if (c.rank === 'A') { aces += 1; total += 11; }
+                else if (c.rank === 'J' || c.rank === 'Q' || c.rank === 'K') total += 10;
+                else total += parseInt(c.rank, 10);
+            });
+            while (total > 21 && aces > 0) { total -= 10; aces -= 1; }
+            return { total, soft: aces > 0 };
+        }
+
+        function bjIsBlackjack(cards) {
+            return cards.length === 2 && bjHandValue(cards).total === 21;
+        }
+
+        function bjCardHTML(card, hidden) {
+            if (hidden) {
+                return '<div class="w-14 h-20 rounded-lg bg-blue-700 border-2 border-blue-300 flex items-center justify-center text-blue-200 text-2xl font-black shadow">?</div>';
+            }
+            const red = card.suit === '♥' || card.suit === '♦';
+            return `<div class="w-14 h-20 rounded-lg bg-white ${red ? 'text-red-500' : 'text-slate-900'} flex flex-col items-center justify-center font-black shadow">` +
+                   `<span class="text-xl leading-none">${card.rank}</span><span class="text-2xl leading-none">${card.suit}</span></div>`;
+        }
+
+        // 카드와 합계를 화면에 그림
+        function bjRender() {
+            document.getElementById('bj-dealer-cards').innerHTML =
+                bjDealer.map((c, i) => bjCardHTML(c, bjHoleHidden && i === 1)).join('');
+            document.getElementById('bj-player-cards').innerHTML =
+                bjPlayer.map(c => bjCardHTML(c, false)).join('');
+
+            const dealerEl = document.getElementById('bj-dealer-total');
+            if (bjDealer.length === 0) dealerEl.innerText = '';
+            else if (bjHoleHidden) dealerEl.innerText = `${bjHandValue([bjDealer[0]]).total} + ?`;
+            else dealerEl.innerText = String(bjHandValue(bjDealer).total);
+
+            const playerEl = document.getElementById('bj-player-total');
+            if (bjPlayer.length === 0) playerEl.innerText = '';
+            else {
+                const v = bjHandValue(bjPlayer);
+                playerEl.innerText = v.soft && v.total < 21 ? `소프트 ${v.total}` : String(v.total);
+            }
+            document.getElementById('bj-current-bet').innerText = bjBet.toLocaleString();
+        }
+
+        // 베팅 영역 <-> 행동 버튼 영역 전환
+        function bjShowBetArea(showBet) {
+            document.getElementById('bj-bet-area').classList.toggle('hidden', !showBet);
+            document.getElementById('bj-action-area').classList.toggle('hidden', showBet);
+        }
+
+        // 지금 상황에 맞게 행동 버튼 활성화
+        function bjUpdateButtons() {
+            const myTurn = bjState === 'player';
+            document.getElementById('bj-hit-btn').disabled = !myTurn;
+            document.getElementById('bj-stand-btn').disabled = !myTurn;
+            document.getElementById('bj-double-btn').disabled = !(myTurn && bjPlayer.length === 2 && money >= bjBet);
+        }
+
+        // 소지금 안에서 걸 수 있는 가장 큰 금액
+        function setBlackjackMaxBet() {
+            if (bjInProgress || isTransitioning || isDayEnding) return;
+            const maxBet = getMaxBet();
+            if (maxBet < GAME_CONFIG.MIN_BET) {
+                document.getElementById('bj-message').innerText = `⚠️ 소지금이 최소 베팅 금액(${GAME_CONFIG.MIN_BET}$)보다 적어요!`;
+                return;
+            }
+            bjBetInputEl.value = String(maxBet);
+        }
+
+        // 블랙잭 모달을 열 때 화면 초기화
+        function initBlackjackModal() {
+            if (bjInProgress) return;
+            let amount = parseInt(bjBetInputEl.value, 10);
+            const valid = !isNaN(amount) && amount >= GAME_CONFIG.MIN_BET &&
+                          amount % GAME_CONFIG.BET_UNIT === 0 && amount <= getMaxBet();
+            if (!valid) amount = GAME_CONFIG.MIN_BET;
+            bjBetInputEl.value = String(amount);
+
+            bjPlayer = [];
+            bjDealer = [];
+            bjBet = 0;
+            bjHoleHidden = true;
+            bjState = 'idle';
+            bjRender();
+            bjShowBetArea(true);
+            bjBetInputEl.disabled = false;
+            bjMaxBtnEl.disabled = false;
+
+            document.getElementById('bj-rule-text').innerText =
+                `블랙잭 ${GAME_CONFIG.BLACKJACK_PAYOUT}배 / 승리 1배 / 딜러는 ${GAME_CONFIG.DEALER_STAND_ON} 이상에서 멈춤`;
+            document.getElementById('bj-bet-rule-text').innerText =
+                `(최소 ${GAME_CONFIG.MIN_BET}$, ${GAME_CONFIG.BET_UNIT}$ 단위)`;
+            document.getElementById('bj-message').innerText = '베팅 금액을 입력하고 딜을 누르세요!';
+            setTimeout(() => bjBetInputEl.focus(), 50);
+        }
+
+        // 딜: 베팅을 확정하고 카드를 나눠줌
+        function dealBlackjack() {
+            if (bjInProgress || isTransitioning || isDayEnding) return;
+
+            const bet = readBetAmount(bjBetInputEl);
+            if (!bet.ok) {
+                document.getElementById('bj-message').innerText = bet.msg;
+                return;
+            }
+            bjBet = bet.amount;
+            bjBetInputEl.value = String(bjBet);
+
+            updateMoney(money - bjBet);
+            SFX.play('chip');
+            bjInProgress = true;
+            bjState = 'dealing';
+            bjHoleHidden = true;
+            bjDeck = bjCreateDeck();
+            bjPlayer = [];
+            bjDealer = [];
+            bjShowBetArea(false);
+            bjUpdateButtons();
+            bjRender();
+            document.getElementById('bj-message').innerText = '카드를 나눠주는 중...';
+
+            const runId = bjRunId;
+            const order = ['player', 'dealer', 'player', 'dealer'];   // 플레이어, 딜러(공개), 플레이어, 딜러(가림) 순서
+            let i = 0;
+            function dealNext() {
+                if (i < order.length) {
+                    (order[i] === 'player' ? bjPlayer : bjDealer).push(bjDeck.pop());
+                    SFX.play('card');
+                    i += 1;
+                    bjRender();
+                    bjDelay(dealNext, BJ_DEAL_DELAY, runId);
+                } else {
+                    bjAfterDeal();
+                }
+            }
+            dealNext();
+        }
+
+        // 처음 두 장을 받은 직후: 블랙잭(두 장으로 21)이 있으면 바로 정산
+        function bjAfterDeal() {
+            const playerBJ = bjIsBlackjack(bjPlayer);
+            const dealerBJ = bjIsBlackjack(bjDealer);
+
+            if (playerBJ || dealerBJ) {
+                bjHoleHidden = false;
+                bjRender();
+                if (playerBJ && dealerBJ) bjSettle('push', '둘 다 블랙잭!');
+                else if (playerBJ) bjSettle('blackjack');
+                else bjSettle('lose', '딜러 블랙잭!');
+                return;
+            }
+
+            bjState = 'player';
+            bjUpdateButtons();
+            document.getElementById('bj-message').innerText = '히트, 스탠드, 더블다운 중 하나를 선택하세요!';
+        }
+
+        function bjHit() {
+            if (bjState !== 'player') return;
+            bjPlayer.push(bjDeck.pop());
+            SFX.play('card');
+            bjRender();
+
+            const total = bjHandValue(bjPlayer).total;
+            if (total > 21) {
+                bjHoleHidden = false;
+                bjRender();
+                bjState = 'idle';
+                bjSettle('lose', '💥 버스트!');
+            } else if (total === 21) {
+                bjStand();   // 21이면 자동으로 스탠드
+            } else {
+                bjUpdateButtons();   // 히트 후에는 더블다운 불가
+            }
+        }
+
+        function bjStand() {
+            if (bjState !== 'player') return;
+            bjDealerTurn();
+        }
+
+        // 더블다운: 베팅을 두 배로 하고 카드 딱 한 장만 받은 뒤 스탠드
+        function bjDouble() {
+            if (bjState !== 'player' || bjPlayer.length !== 2) return;
+            if (money < bjBet) {
+                document.getElementById('bj-message').innerText = '⚠️ 소지금이 부족해서 더블다운할 수 없어요!';
+                return;
+            }
+            updateMoney(money - bjBet);
+            SFX.play('chip');
+            bjBet *= 2;
+            bjPlayer.push(bjDeck.pop());
+            SFX.play('card', 0.15);
+            bjRender();
+
+            if (bjHandValue(bjPlayer).total > 21) {
+                bjHoleHidden = false;
+                bjRender();
+                bjState = 'idle';
+                bjSettle('lose', '💥 버스트!');
+            } else {
+                bjDealerTurn();
+            }
+        }
+
+        // 딜러 차례: 가린 카드를 공개하고 DEALER_STAND_ON 미만이면 계속 뽑음
+        function bjDealerTurn() {
+            bjState = 'dealer';
+            bjUpdateButtons();
+            bjHoleHidden = false;
+            bjRender();
+            document.getElementById('bj-message').innerText = '딜러 차례...';
+
+            const runId = bjRunId;
+            function dealerStep() {
+                if (bjHandValue(bjDealer).total < GAME_CONFIG.DEALER_STAND_ON) {
+                    bjDealer.push(bjDeck.pop());
+                    SFX.play('card');
+                    bjRender();
+                    bjDelay(dealerStep, BJ_DEALER_DELAY, runId);
+                } else {
+                    bjShowdown();
+                }
+            }
+            bjDelay(dealerStep, BJ_DEALER_DELAY, runId);
+        }
+
+        // 최종 비교
+        function bjShowdown() {
+            const p = bjHandValue(bjPlayer).total;
+            const d = bjHandValue(bjDealer).total;
+            if (d > 21) bjSettle('win', '🎉 딜러 버스트!');
+            else if (p > d) bjSettle('win');
+            else if (p < d) bjSettle('lose');
+            else bjSettle('push');
+        }
+
+        // 정산: outcome = 'blackjack' | 'win' | 'push' | 'lose'
+        function bjSettle(outcome, note) {
+            bjState = 'idle';
+            const bet = bjBet;
+            const prefix = note ? note + ' ' : '';
+            let payout = 0;   // 되돌려 받는 총액 (베팅액 포함)
+            let msg;
+
+            if (outcome === 'blackjack') {
+                payout = Math.floor(bet * (1 + GAME_CONFIG.BLACKJACK_PAYOUT));
+                msg = `🎉 블랙잭! 순이익 +${(payout - bet).toLocaleString()}$`;
+            } else if (outcome === 'win') {
+                payout = bet * 2;
+                msg = `✨ ${prefix}승리! 순이익 +${bet.toLocaleString()}$`;
+            } else if (outcome === 'push') {
+                payout = bet;
+                msg = `🤝 ${prefix}무승부! 베팅액 ${bet.toLocaleString()}$ 반환`;
+            } else {
+                msg = `💸 ${prefix}패배! -${bet.toLocaleString()}$`;
+            }
+
+            if (payout > 0) updateMoney(money + payout);
+            document.getElementById('bj-message').innerText = msg;
+            SFX.play(outcome === 'blackjack' ? 'jackpot' : outcome === 'win' ? 'win' : outcome === 'push' ? 'push' : 'lose', 0.1);
+
+            // 판 종료: 다시 베팅할 수 있게 되돌림
+            bjInProgress = false;
+            bjShowBetArea(true);
+            bjBetInputEl.disabled = false;
+            bjMaxBtnEl.disabled = false;
+            bjUpdateButtons();
+
+            // 최소 베팅 금액도 걸 수 없으면 파산: 결과를 1초 보여준 뒤 게임오버 (판수는 올리지 않음)
+            if (money < GAME_CONFIG.MIN_BET) {
+                isDayEnding = true;
+                setTimeout(() => {
+                    showGameOver("소지금이 모두 소진되어 파산했습니다.");
+                }, 1000);
+                return;
+            }
+
+            // 소지금보다 큰 베팅액이 입력창에 남아 있으면 걸 수 있는 최대 금액으로 낮춤
+            const current = parseInt(bjBetInputEl.value, 10);
+            const maxBet = getMaxBet();
+            if (!isNaN(current) && current > maxBet && maxBet >= GAME_CONFIG.MIN_BET) {
+                bjBetInputEl.value = String(maxBet);
+            }
+
+            recordGamePlay();   // 한 판 = 하루 게임 횟수 +1
+        }
+
+        // ==========================================
+        // [룰렛] 유러피언 룰렛 (0~36, 초록 0 하나)
+        //  - 인사이드: 숫자를 눌러 고르면 스트레이트/스플릿/스트리트/코너/식스라인을 자동 판별
+        //  - 아웃사이드: 빨강·검정, 홀·짝, 1-18·19-36 (1:1) / 다스 3종, 컬럼 3종 (2:1)
+        //  - 여러 곳에 동시에 베팅할 수 있고, 스핀 한 번이 하루 게임 횟수 +1
+        //  - 0이 나오면 숫자 베팅이 아닌 곳은 모두 짐 (하우스 엣지 약 2.7%)
+        // ==========================================
+        const ROULETTE_RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
+        // 배당 (N:1, 원금 제외한 순이익 배수)
+        const ROULETTE_PAYOUT = { straight: 35, split: 17, street: 11, corner: 8, line: 5, dozen: 2, column: 2, even: 1 };
+        const RL_SPIN_STEPS = 24;   // 공이 돌아가는 연출 단계 수
+        const RL_MAX_SELECT = 6;    // 한 번에 고를 수 있는 숫자 수 (식스라인까지)
+
+        const rlRange = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+        const RL_ALL = rlRange(1, 36);
+        const RL_OUTSIDE = {
+            red:    { label: '빨강',       numbers: RL_ALL.filter(n => ROULETTE_RED.has(n)),  mult: ROULETTE_PAYOUT.even },
+            black:  { label: '검정',       numbers: RL_ALL.filter(n => !ROULETTE_RED.has(n)), mult: ROULETTE_PAYOUT.even },
+            odd:    { label: '홀',         numbers: RL_ALL.filter(n => n % 2 === 1),          mult: ROULETTE_PAYOUT.even },
+            even:   { label: '짝',         numbers: RL_ALL.filter(n => n % 2 === 0),          mult: ROULETTE_PAYOUT.even },
+            low:    { label: '1-18',       numbers: rlRange(1, 18),                           mult: ROULETTE_PAYOUT.even },
+            high:   { label: '19-36',      numbers: rlRange(19, 36),                          mult: ROULETTE_PAYOUT.even },
+            dozen1: { label: '다스 1-12',  numbers: rlRange(1, 12),                           mult: ROULETTE_PAYOUT.dozen },
+            dozen2: { label: '다스 13-24', numbers: rlRange(13, 24),                          mult: ROULETTE_PAYOUT.dozen },
+            dozen3: { label: '다스 25-36', numbers: rlRange(25, 36),                          mult: ROULETTE_PAYOUT.dozen },
+            col1:   { label: '컬럼 1열',   numbers: RL_ALL.filter(n => n % 3 === 1),          mult: ROULETTE_PAYOUT.column },
+            col2:   { label: '컬럼 2열',   numbers: RL_ALL.filter(n => n % 3 === 2),          mult: ROULETTE_PAYOUT.column },
+            col3:   { label: '컬럼 3열',   numbers: RL_ALL.filter(n => n % 3 === 0),          mult: ROULETTE_PAYOUT.column }
+        };
+
+        function rlColor(n) { return n === 0 ? 'green' : ROULETTE_RED.has(n) ? 'red' : 'black'; }
+        const RL_COLOR_NAME = { green: '초록', red: '빨강', black: '검정' };
+        const RL_COLOR_CLASS = {
+            green: 'bg-emerald-700 border-emerald-400',
+            red: 'bg-red-600 border-red-300',
+            black: 'bg-slate-950 border-slate-500'
+        };
+
+        const rlBetInputEl = document.getElementById('rl-bet-input');
+
+        // 숫자만 입력되도록 걸러냄
+        rlBetInputEl.addEventListener('input', () => {
+            rlBetInputEl.value = rlBetInputEl.value.replace(/[^0-9]/g, '');
+        });
+
+        // 입력창에서 누른 키가 게임 조작으로 전달되지 않게 막음 (ESC는 전달, Enter는 베팅이 있으면 스핀)
+        rlBetInputEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') return;
+            e.stopPropagation();
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (rlBets.length > 0) spinRoulette();
+            }
+        });
+
+        function rlSetMessage(msg) {
+            if (msg.startsWith('⚠️')) SFX.play('error');   // 경고 문구면 경고음
+            document.getElementById('rl-message').innerText = msg;
+        }
+
+        // 지연 실행: 게임이 초기화(rlRunId 변경)된 뒤에는 실행하지 않음
+        function rlDelay(fn, ms, runId) {
+            setTimeout(() => {
+                if (runId === rlRunId) fn();
+            }, ms);
+        }
+
+        function rlTotalBet() {
+            return rlBets.reduce((sum, b) => sum + b.amount, 0);
+        }
+
+        // 고른 숫자(오름차순 배열)가 어떤 인사이드 베팅인지 판별 (해당 없으면 null)
+        function rlDetectInside(sorted) {
+            const n = sorted.length;
+            if (n === 0) return null;
+            const kinds = {
+                straight: { name: '스트레이트', mult: ROULETTE_PAYOUT.straight },
+                split:    { name: '스플릿',     mult: ROULETTE_PAYOUT.split },
+                street:   { name: '스트리트',   mult: ROULETTE_PAYOUT.street },
+                corner:   { name: '코너',       mult: ROULETTE_PAYOUT.corner },
+                line:     { name: '식스라인',   mult: ROULETTE_PAYOUT.line }
+            };
+            if (n === 1) return kinds.straight;
+
+            // 0이 들어간 조합 (유러피언 룰렛)
+            if (sorted[0] === 0) {
+                const rest = sorted.slice(1).join(',');
+                if (n === 2 && (rest === '1' || rest === '2' || rest === '3')) return kinds.split;
+                if (n === 3 && (rest === '1,2' || rest === '2,3')) return { name: '트리오', mult: ROULETTE_PAYOUT.street };
+                if (n === 4 && rest === '1,2,3') return { name: '퍼스트 포', mult: ROULETTE_PAYOUT.corner };
+                return null;
+            }
+
+            // 1~36: 3줄 x 12칸 배치 (열 = 가로 위치, 행 = 세로 위치)
+            const col = (x) => Math.floor((x - 1) / 3);
+            const row = (x) => (x - 1) % 3;
+            const cols = [...new Set(sorted.map(col))].sort((a, b) => a - b);
+            const rows = [...new Set(sorted.map(row))].sort((a, b) => a - b);
+            const consecutive = (arr) => arr.every((v, i) => i === 0 || v === arr[i - 1] + 1);
+
+            if (n === 2) {
+                const vertical = cols.length === 1 && rows.length === 2 && consecutive(rows);
+                const horizontal = rows.length === 1 && cols.length === 2 && consecutive(cols);
+                return vertical || horizontal ? kinds.split : null;
+            }
+            if (n === 3) return cols.length === 1 ? kinds.street : null;
+            if (n === 4) return cols.length === 2 && rows.length === 2 && consecutive(cols) && consecutive(rows) ? kinds.corner : null;
+            if (n === 6) return cols.length === 2 && rows.length === 3 && consecutive(cols) ? kinds.line : null;
+            return null;
+        }
+
+        // 베팅 테이블 그리기: 0, 1~36, 컬럼, 다스, 홀짝/색/하이로우
+        function rlBuildTable() {
+            const cell = 'h-10 rounded text-xs sm:text-sm font-bold flex items-center justify-center border transition hover:brightness-125';
+            const plain = 'bg-slate-700 border-slate-500 text-amber-200';
+            const parts = [];
+
+            parts.push(`<button type="button" id="rl-num-0" onclick="rlToggleNumber(0)" class="${cell} text-white ${RL_COLOR_CLASS.green}" style="grid-column: 1; grid-row: 1 / span 3; height: auto;">0</button>`);
+            for (let c = 0; c < 12; c++) {
+                for (let r = 0; r < 3; r++) {
+                    const n = c * 3 + r + 1;   // r = 0이 맨 아래 줄 (1, 4, 7, ...)
+                    parts.push(`<button type="button" id="rl-num-${n}" onclick="rlToggleNumber(${n})" class="${cell} text-white ${RL_COLOR_CLASS[rlColor(n)]}" style="grid-column: ${c + 2}; grid-row: ${3 - r};">${n}</button>`);
+                }
+            }
+            [['col3', 1], ['col2', 2], ['col1', 3]].forEach(([key, gridRow]) => {
+                parts.push(`<button type="button" onclick="rlAddOutside('${key}')" class="${cell} ${plain}" style="grid-column: 14; grid-row: ${gridRow};">2:1</button>`);
+            });
+            [['dozen1', 2], ['dozen2', 6], ['dozen3', 10]].forEach(([key, startCol]) => {
+                parts.push(`<button type="button" onclick="rlAddOutside('${key}')" class="${cell} ${plain}" style="grid-column: ${startCol} / span 4; grid-row: 4;">${RL_OUTSIDE[key].label}</button>`);
+            });
+            [['low', 2], ['even', 4], ['red', 6], ['black', 8], ['odd', 10], ['high', 12]].forEach(([key, startCol]) => {
+                const look = key === 'red' ? 'bg-red-600 border-red-300 text-white'
+                           : key === 'black' ? 'bg-slate-950 border-slate-500 text-white' : plain;
+                parts.push(`<button type="button" onclick="rlAddOutside('${key}')" class="${cell} ${look}" style="grid-column: ${startCol} / span 2; grid-row: 5;">${RL_OUTSIDE[key].label}</button>`);
+            });
+            document.getElementById('rl-table').innerHTML = parts.join('');
+        }
+        rlBuildTable();
+
+        // 고른 숫자 표시와 안내 문구 갱신
+        function rlRefreshSelection() {
+            for (let n = 0; n <= 36; n++) {
+                const el = document.getElementById('rl-num-' + n);
+                const on = rlSelected.has(n);
+                el.classList.toggle('ring-2', on);
+                el.classList.toggle('ring-amber-400', on);
+                el.classList.toggle('brightness-150', on);
+            }
+            const infoEl = document.getElementById('rl-selection-info');
+            const addBtn = document.getElementById('rl-add-selected-btn');
+            const nums = [...rlSelected].sort((a, b) => a - b);
+
+            if (nums.length === 0) {
+                infoEl.innerText = '숫자를 눌러 고르거나, 아래 칸(색·홀짝·다스·컬럼)을 눌러 바로 베팅하세요.';
+                addBtn.disabled = true;
+                return;
+            }
+            const found = rlDetectInside(nums);
+            if (found) {
+                infoEl.innerText = `선택: ${nums.join(', ')} → ${found.name} (${found.mult}:1)`;
+                addBtn.disabled = false;
+            } else {
+                infoEl.innerText = `선택: ${nums.join(', ')} → ⚠️ 베팅할 수 없는 조합이에요 (인접한 2개, 한 줄 3개, 2×2 네 숫자, 인접한 두 줄 6개만 가능)`;
+                addBtn.disabled = true;
+            }
+        }
+
+        function rlToggleNumber(n) {
+            if (rlSpinning || isTransitioning || isDayEnding) return;
+            SFX.play('click');
+            if (rlSelected.has(n)) {
+                rlSelected.delete(n);
+            } else {
+                if (rlSelected.size >= RL_MAX_SELECT) {
+                    rlSetMessage(`⚠️ 숫자는 최대 ${RL_MAX_SELECT}개까지 고를 수 있어요!`);
+                    return;
+                }
+                rlSelected.add(n);
+            }
+            rlRefreshSelection();
+        }
+
+        function rlClearSelection() {
+            if (rlSpinning) return;
+            rlSelected.clear();
+            rlRefreshSelection();
+        }
+
+        // 올려둔 베팅 목록과 합계 그리기
+        function rlRenderBets() {
+            const listEl = document.getElementById('rl-bet-list');
+            if (rlBets.length === 0) {
+                listEl.innerHTML = '<span class="text-xs text-slate-500">아직 올려둔 베팅이 없어요.</span>';
+            } else {
+                listEl.innerHTML = rlBets.map(b =>
+                    `<span class="inline-flex items-center gap-1 bg-slate-800 border border-slate-600 rounded-full px-3 py-1 text-xs text-slate-100">` +
+                    `${b.label} <strong class="text-amber-300">${b.amount.toLocaleString()}$</strong> <span class="text-slate-500">(${b.mult}:1)</span>` +
+                    (rlSpinning ? '' : ` <button type="button" onclick="rlRemoveBet('${b.key}')" class="text-slate-400 hover:text-red-400 font-bold">✕</button>`) +
+                    `</span>`
+                ).join('');
+            }
+            document.getElementById('rl-total-bet').innerText = rlTotalBet().toLocaleString();
+        }
+
+        function rlRenderHistory() {
+            document.getElementById('rl-history').innerHTML = rlHistory.map(n =>
+                `<span class="w-7 h-7 rounded-full border text-xs font-bold text-white flex items-center justify-center ${RL_COLOR_CLASS[rlColor(n)]}">${n}</span>`
+            ).join('');
+        }
+
+        // 휠 표시: 숫자와 색 (rolling이면 흐리게)
+        function rlShowWheel(n, rolling) {
+            const wheel = document.getElementById('rl-wheel');
+            wheel.innerText = String(n);
+            wheel.className = `w-24 h-24 rounded-full border-4 flex items-center justify-center text-4xl font-black text-white shadow-inner ${RL_COLOR_CLASS[rlColor(n)]}${rolling ? ' opacity-70' : ''}`;
+        }
+
+        // 스핀 중에는 입력과 버튼을 잠금
+        function rlSetLocked(locked) {
+            rlBetInputEl.disabled = locked;
+            ['rl-max-btn', 'rl-spin-btn', 'rl-repeat-btn', 'rl-clear-btn', 'rl-add-selected-btn'].forEach(id => {
+                document.getElementById(id).disabled = locked;
+            });
+        }
+
+        // 룰렛 모달을 열 때 화면 초기화
+        function initRouletteModal() {
+            if (rlSpinning) return;
+            rlBets = [];
+            rlSelected.clear();
+
+            let amount = parseInt(rlBetInputEl.value, 10);
+            const valid = !isNaN(amount) && amount >= GAME_CONFIG.MIN_BET &&
+                          amount % GAME_CONFIG.BET_UNIT === 0 && amount <= getMaxBet();
+            if (!valid) amount = GAME_CONFIG.MIN_BET;
+            rlBetInputEl.value = String(amount);
+
+            document.getElementById('rl-rule-text').innerText =
+                '유러피언 룰렛 (0~36) · 숫자 35:1 / 스플릿 17:1 / 스트리트 11:1 / 코너 8:1 / 식스라인 5:1 / 다스·컬럼 2:1 / 색·홀짝·하이로우 1:1';
+            document.getElementById('rl-bet-rule-text').innerText =
+                `(최소 ${GAME_CONFIG.MIN_BET}$, ${GAME_CONFIG.BET_UNIT}$ 단위)`;
+            rlSetLocked(false);
+            rlRefreshSelection();
+            rlRenderBets();
+            rlRenderHistory();
+            rlSetMessage('칩 금액을 정하고 베팅할 곳을 눌러 칩을 올린 뒤 스핀하세요!');
+            setTimeout(() => rlBetInputEl.focus(), 50);
+        }
+
+        // 남은 소지금(이미 올려둔 베팅 제외) 전부를 칩 금액으로
+        function setRouletteMaxBet() {
+            if (rlSpinning || isTransitioning || isDayEnding) return;
+            const free = money - rlTotalBet();
+            const maxChip = Math.floor(free / GAME_CONFIG.BET_UNIT) * GAME_CONFIG.BET_UNIT;
+            if (maxChip < GAME_CONFIG.MIN_BET) {
+                rlSetMessage(`⚠️ 더 올릴 수 있는 소지금이 최소 베팅 금액(${GAME_CONFIG.MIN_BET}$)보다 적어요!`);
+                return;
+            }
+            rlBetInputEl.value = String(maxChip);
+        }
+
+        // 베팅 한 곳을 추가 (같은 곳이면 금액을 더함). 성공하면 true
+        function rlAddBet(key, label, numbers, mult) {
+            if (rlSpinning || isTransitioning || isDayEnding) return false;
+
+            const bet = readBetAmount(rlBetInputEl);
+            if (!bet.ok) {
+                rlSetMessage(bet.msg);
+                return false;
+            }
+            const total = rlTotalBet();
+            if (total + bet.amount > money) {
+                rlSetMessage(`⚠️ 소지금(${money.toLocaleString()}$)보다 많이 걸 수 없어요! (이미 올린 ${total.toLocaleString()}$)`);
+                return false;
+            }
+            rlBetInputEl.value = String(bet.amount);
+
+            const existing = rlBets.find(b => b.key === key);
+            if (existing) existing.amount += bet.amount;
+            else rlBets.push({ key, label, numbers: numbers.slice(), mult, amount: bet.amount });
+
+            rlRenderBets();
+            SFX.play('chip');
+            rlSetMessage(`${label}에 ${bet.amount.toLocaleString()}$ 칩을 올렸어요.`);
+            return true;
+        }
+
+        // 아웃사이드 칸(색, 홀짝, 다스, 컬럼)을 눌렀을 때
+        function rlAddOutside(key) {
+            const o = RL_OUTSIDE[key];
+            if (!o) return;
+            rlAddBet(key, o.label, o.numbers, o.mult);
+        }
+
+        // 고른 숫자에 베팅 (조합을 자동 판별)
+        function rlAddSelected() {
+            const nums = [...rlSelected].sort((a, b) => a - b);
+            const found = rlDetectInside(nums);
+            if (!found) {
+                rlSetMessage('⚠️ 베팅할 수 없는 숫자 조합이에요!');
+                return;
+            }
+            const added = rlAddBet('in:' + nums.join('-'), `${found.name} ${nums.join('·')}`, nums, found.mult);
+            if (added) {
+                rlSelected.clear();
+                rlRefreshSelection();
+            }
+        }
+
+        function rlRemoveBet(key) {
+            if (rlSpinning) return;
+            SFX.play('click');
+            rlBets = rlBets.filter(b => b.key !== key);
+            rlRenderBets();
+        }
+
+        function rlClearBets() {
+            if (rlSpinning) return;
+            SFX.play('click');
+            rlBets = [];
+            rlRenderBets();
+            rlSetMessage('올려둔 베팅을 모두 치웠어요.');
+        }
+
+        // 직전 스핀 때의 베팅을 그대로 다시 올림
+        function rlRepeatBets() {
+            if (rlSpinning || isTransitioning || isDayEnding) return;
+            if (rlLastBets.length === 0) {
+                rlSetMessage('⚠️ 반복할 직전 베팅이 없어요!');
+                return;
+            }
+            const total = rlLastBets.reduce((sum, b) => sum + b.amount, 0);
+            if (total > money) {
+                rlSetMessage(`⚠️ 직전 베팅 합계(${total.toLocaleString()}$)가 소지금보다 커서 반복할 수 없어요!`);
+                return;
+            }
+            rlBets = rlLastBets.map(b => ({ ...b, numbers: b.numbers.slice() }));
+            rlRenderBets();
+            rlSetMessage(`직전 베팅 ${rlBets.length}곳(합계 ${total.toLocaleString()}$)을 다시 올렸어요.`);
+        }
+
+        // 스핀: 베팅 금액을 걸고 공을 굴림
+        function spinRoulette() {
+            if (rlSpinning || isTransitioning || isDayEnding) return;
+
+            const total = rlTotalBet();
+            if (rlBets.length === 0 || total <= 0) {
+                rlSetMessage('⚠️ 먼저 베팅할 곳에 칩을 올려주세요!');
+                return;
+            }
+            if (total > money) {
+                rlSetMessage(`⚠️ 소지금(${money.toLocaleString()}$)보다 많이 걸 수 없어요!`);
+                return;
+            }
+
+            const placed = rlBets.map(b => ({ ...b, numbers: b.numbers.slice() }));
+            rlLastBets = placed.map(b => ({ ...b, numbers: b.numbers.slice() }));
+
+            updateMoney(money - total);
+            rlSpinning = true;
+            rlSelected.clear();
+            rlRefreshSelection();
+            rlSetLocked(true);
+            rlRenderBets();
+            rlSetMessage('공이 돌아가는 중...');
+            SFX.play('spinStart');
+
+            const result = Math.floor(Math.random() * 37);   // 0~36 (각 1/37)
+            const runId = rlRunId;
+            let step = 0;
+            function tick() {
+                if (step < RL_SPIN_STEPS) {
+                    rlShowWheel(Math.floor(Math.random() * 37), true);
+                    SFX.play('rouletteTick');
+                    step += 1;
+                    const delay = 50 + Math.round(Math.pow(step / RL_SPIN_STEPS, 2) * 260);   // 점점 느려짐
+                    rlDelay(tick, delay, runId);
+                } else {
+                    rlShowWheel(result, false);
+                    SFX.play('rouletteLand');
+                    rlSettle(result, placed, total);
+                }
+            }
+            tick();
+        }
+
+        // 정산: 맞힌 베팅은 (배당 + 1) x 칩 금액을 돌려받음
+        function rlSettle(result, placed, total) {
+            let payout = 0;
+            placed.forEach(b => {
+                if (b.numbers.includes(result)) payout += b.amount * (b.mult + 1);
+            });
+            if (payout > 0) updateMoney(money + payout);
+            const net = payout - total;
+
+            const colorName = RL_COLOR_NAME[rlColor(result)];
+            let msg;
+            if (net > 0) msg = `🎉 ${result}번 ${colorName}! 순이익 +${net.toLocaleString()}$`;
+            else if (net === 0 && payout > 0) msg = `🤝 ${result}번 ${colorName}! 본전이에요`;
+            else if (payout > 0) msg = `✨ ${result}번 ${colorName}! 일부 적중, 순손실 -${(-net).toLocaleString()}$`;
+            else msg = `💸 ${result}번 ${colorName}! 꽝 -${total.toLocaleString()}$`;
+            rlSetMessage(msg);
+            // 순이익이 큰 적중(투자금의 10배 이상)은 잭팟음, 그 외 이득은 승리음
+            SFX.play(net > 0 ? (payout >= total * 10 ? 'jackpot' : 'win') : (payout > 0 ? 'push' : 'lose'), 0.3);
+
+            rlHistory.unshift(result);
+            if (rlHistory.length > 12) rlHistory.pop();
+            rlRenderHistory();
+
+            rlBets = [];
+            rlSpinning = false;
+            rlSetLocked(false);
+            rlRenderBets();
+            rlRefreshSelection();
+
+            // 최소 베팅 금액도 걸 수 없으면 파산: 결과를 1초 보여준 뒤 게임오버 (판수는 올리지 않음)
+            if (money < GAME_CONFIG.MIN_BET) {
+                isDayEnding = true;
+                setTimeout(() => {
+                    showGameOver("소지금이 모두 소진되어 파산했습니다.");
+                }, 1000);
+                return;
+            }
+
+            // 칩 금액이 소지금보다 크면 걸 수 있는 최대 금액으로 낮춤
+            const current = parseInt(rlBetInputEl.value, 10);
+            const maxBet = getMaxBet();
+            if (!isNaN(current) && current > maxBet && maxBet >= GAME_CONFIG.MIN_BET) {
+                rlBetInputEl.value = String(maxBet);
+            }
+
+            recordGamePlay();   // 스핀 한 번 = 하루 게임 횟수 +1
+        }
+
+        // ==========================================
+        // [홀덤] 텍사스 홀덤 1:1 (헤즈업, 노리밋)
+        //  - 상대는 박은찬(AI). 양쪽 칩은 핸드 시작 때 플레이어 소지금과 같게 시작 (유효 스택)
+        //  - 블라인드 HOLDEM_SMALL_BLIND / HOLDEM_BIG_BLIND, 핸드마다 버튼 교대 (버튼 = 스몰 블라인드)
+        //  - 프리플랍은 버튼이 먼저, 플랍 이후는 버튼이 마지막에 행동
+        //  - 핸드가 끝날 때마다 하루 게임 횟수 +1
+        // ==========================================
+        const HD_OPP_NAME = '박은찬';
+        const HD_HAND_NAMES = ['하이 카드', '원 페어', '투 페어', '트리플', '스트레이트', '플러시', '풀 하우스', '포카드', '스트레이트 플러시'];
+        const HD_STREET_LABEL = { idle: '공용 카드', preflop: '프리플랍', flop: '플랍', turn: '턴', river: '리버', showdown: '쇼다운', done: '핸드 종료' };
+        const HD_RANK_NUM = { 'A': 14, 'K': 13, 'Q': 12, 'J': 11, '10': 10, '9': 9, '8': 8, '7': 7, '6': 6, '5': 5, '4': 4, '3': 3, '2': 2 };
+        const HD_SUIT_IDX = { '♠': 0, '♥': 1, '♦': 2, '♣': 3 };
+        const HD_FULL_DECK = Array.from({ length: 52 }, (_, i) => i);
+
+        const hdRaiseInputEl = document.getElementById('hd-raise-input');
+
+        // 숫자만 입력되도록 걸러냄
+        hdRaiseInputEl.addEventListener('input', () => {
+            hdRaiseInputEl.value = hdRaiseInputEl.value.replace(/[^0-9]/g, '');
+        });
+
+        // 입력창에서 누른 키가 게임 조작으로 전달되지 않게 막음 (ESC는 전달, Enter는 레이즈)
+        hdRaiseInputEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') return;
+            e.stopPropagation();
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                hdPlayerRaise();
+            }
+        });
+
+        // ---------- 카드 번호 / 족보 계산 ----------
+        // 카드를 0~51 숫자로 바꿈: (숫자 - 2) * 4 + 무늬
+        function hdNum(card) {
+            return (HD_RANK_NUM[card.rank] - 2) * 4 + HD_SUIT_IDX[card.suit];
+        }
+
+        // 숫자 비트마스크에서 가장 높은 스트레이트의 맨 위 숫자 (없으면 0). A는 14 또는 1(휠)로 취급
+        function hdStraightHigh(mask) {
+            if (mask & (1 << 14)) mask |= (1 << 1);
+            for (let high = 14; high >= 5; high--) {
+                const need = 31 << (high - 4);   // high-4 ~ high 다섯 칸
+                if ((mask & need) === need) return high;
+            }
+            return 0;
+        }
+
+        // 7장(또는 5~7장) 중 가장 높은 5장 족보를 하나의 정수 점수로 계산 (클수록 강함)
+        // 점수 = 족보 종류(0~8) * 15^5 + 비교 숫자들을 15진수로 이어붙인 값
+        function hdScore7(cards) {
+            const cnt = new Array(15).fill(0);
+            const suitMask = [0, 0, 0, 0], suitCnt = [0, 0, 0, 0];
+            let mask = 0;
+            for (let i = 0; i < cards.length; i++) {
+                const c = cards[i], r = (c >> 2) + 2, su = c & 3;
+                cnt[r] += 1; suitCnt[su] += 1; suitMask[su] |= (1 << r); mask |= (1 << r);
+            }
+            const enc = (cat, arr) => { let v = cat; for (let i = 0; i < 5; i++) v = v * 15 + (arr[i] || 0); return v; };
+
+            let flushMask = 0;
+            for (let su = 0; su < 4; su++) if (suitCnt[su] >= 5) flushMask = suitMask[su];
+            if (flushMask) {
+                const sf = hdStraightHigh(flushMask);
+                if (sf) return enc(8, [sf]);
+            }
+
+            const quads = [], trips = [], pairs = [], singles = [];
+            for (let r = 14; r >= 2; r--) {
+                if (cnt[r] === 4) quads.push(r);
+                else if (cnt[r] === 3) trips.push(r);
+                else if (cnt[r] === 2) pairs.push(r);
+                else if (cnt[r] === 1) singles.push(r);
+            }
+            const byRank = (a, b) => b - a;
+
+            if (quads.length) return enc(7, [quads[0], [...trips, ...pairs, ...singles].sort(byRank)[0]]);
+            if (trips.length && (trips.length > 1 || pairs.length)) {
+                const pairRank = Math.max(trips.length > 1 ? trips[1] : 0, pairs.length ? pairs[0] : 0);
+                return enc(6, [trips[0], pairRank]);
+            }
+            if (flushMask) {
+                const top = [];
+                for (let r = 14; r >= 2 && top.length < 5; r--) if (flushMask & (1 << r)) top.push(r);
+                return enc(5, top);
+            }
+            const st = hdStraightHigh(mask);
+            if (st) return enc(4, [st]);
+            if (trips.length) return enc(3, [trips[0], ...[...pairs, ...singles].sort(byRank).slice(0, 2)]);
+            if (pairs.length >= 2) {
+                const rest = [...(pairs.length > 2 ? [pairs[2]] : []), ...singles].sort(byRank);
+                return enc(2, [pairs[0], pairs[1], rest[0]]);
+            }
+            if (pairs.length === 1) return enc(1, [pairs[0], ...singles.slice(0, 3)]);
+            return enc(0, singles.slice(0, 5));
+        }
+
+        function hdCategory(score) {
+            return Math.floor(score / 759375);   // 15^5
+        }
+
+        // 족보 이름 (스트레이트 플러시 중 A 하이는 로열)
+        function hdHandName(score) {
+            const cat = hdCategory(score);
+            if (cat === 8 && Math.floor(score / 50625) % 15 === 14) return '로열 스트레이트 플러시';
+            return HD_HAND_NAMES[cat];
+        }
+
+        // 홀 카드와 공용 카드로 상대의 무작위 손을 가정한 승률 추정 (몬테카를로)
+        function hdEquity(holeNums, boardNums, sims) {
+            const used = new Set([...holeNums, ...boardNums]);
+            const rest = HD_FULL_DECK.filter(c => !used.has(c));
+            const needBoard = 5 - boardNums.length;
+            const draw = needBoard + 2;
+            let total = 0;
+            for (let t = 0; t < sims; t++) {
+                for (let i = 0; i < draw; i++) {   // 필요한 장수만 부분 셔플
+                    const j = i + Math.floor(Math.random() * (rest.length - i));
+                    const tmp = rest[i]; rest[i] = rest[j]; rest[j] = tmp;
+                }
+                const fullBoard = boardNums.concat(rest.slice(0, needBoard));
+                const mine = hdScore7(holeNums.concat(fullBoard));
+                const theirs = hdScore7([rest[needBoard], rest[needBoard + 1]].concat(fullBoard));
+                total += mine > theirs ? 1 : (mine === theirs ? 0.5 : 0);
+            }
+            return total / sims;
+        }
+
+        // ---------- 칩 이동 / 상태 계산 ----------
+        function hdStack(who) { return who === 'player' ? money : hdOppStack; }
+        function hdCur() { return Math.max(hdStreetBet.player, hdStreetBet.opp); }
+        function hdMinRaiseTo(who) {
+            return hdCur() + Math.max(hdLastRaise, GAME_CONFIG.HOLDEM_BIG_BLIND);
+        }
+        function hdDelay(fn, ms, runId) {
+            setTimeout(() => {
+                if (runId === hdRunId) fn();
+            }, ms);
+        }
+
+        // 칩을 팟에 넣음 (가진 칩보다 많이는 못 넣음). 실제로 넣은 금액을 돌려줌
+        function hdPut(who, amount) {
+            const amt = Math.min(amount, hdStack(who));
+            if (amt <= 0) return 0;
+            if (who === 'player') updateMoney(money - amt);
+            else hdOppStack -= amt;
+            hdStreetBet[who] += amt;
+            hdTotalIn[who] += amt;
+            hdPot += amt;
+            return amt;
+        }
+
+        // ---------- 화면 ----------
+        function hdSetMessage(msg) {
+            if (msg.startsWith('⚠️')) SFX.play('error');   // 경고 문구면 경고음
+            document.getElementById('hd-message').innerText = msg;
+        }
+
+        function hdRender() {
+            const slots = [];
+            for (let i = 0; i < 5; i++) {
+                slots.push(hdBoard[i] ? bjCardHTML(hdBoard[i], false)
+                    : '<div class="w-14 h-20 rounded-lg border-2 border-dashed border-emerald-800"></div>');
+            }
+            document.getElementById('hd-board').innerHTML = slots.join('');
+            document.getElementById('hd-opp-cards').innerHTML = hdOppHole.map(c => bjCardHTML(c, hdOppHidden)).join('');
+            document.getElementById('hd-player-cards').innerHTML = hdPlayerHole.map(c => bjCardHTML(c, false)).join('');
+
+            document.getElementById('hd-opp-name').innerText = HD_OPP_NAME;
+            document.getElementById('hd-pot').innerText = hdPot.toLocaleString();
+            document.getElementById('hd-street-label').innerText = HD_STREET_LABEL[hdStreet] || '공용 카드';
+            const active = hdStreet !== 'idle';
+            document.getElementById('hd-opp-stack').innerText = active ? hdOppStack.toLocaleString() : '-';
+            document.getElementById('hd-player-stack').innerText = money.toLocaleString();
+            document.getElementById('hd-opp-bet').innerText = hdStreetBet.opp.toLocaleString();
+            document.getElementById('hd-player-bet').innerText = hdStreetBet.player.toLocaleString();
+            document.getElementById('hd-opp-note').innerText = hdNotes.opp;
+            document.getElementById('hd-player-note').innerText = hdNotes.player;
+
+            const badge = (who) => !active ? '' : (hdButton === who ? '[D · SB]' : '[BB]');
+            document.getElementById('hd-opp-badge').innerText = badge('opp');
+            document.getElementById('hd-player-badge').innerText = badge('player');
+
+            // 내 현재 족보 (플랍 이후)
+            const handEl = document.getElementById('hd-hand-name');
+            if (hdPlayerHole.length === 2 && hdBoard.length >= 3) {
+                handEl.innerText = `(${hdHandName(hdScore7(hdPlayerHole.concat(hdBoard).map(hdNum)))})`;
+            } else {
+                handEl.innerText = '';
+            }
+        }
+
+        // 내 차례일 때의 행동 영역 설정
+        function hdShowPlayerActions() {
+            const cur = hdCur();
+            const toCall = cur - hdStreetBet.player;
+            const maxTo = hdStreetBet.player + money;
+            const minTo = Math.min(hdMinRaiseTo(), maxTo);
+            const canRaise = hdRaisesThisStreet < GAME_CONFIG.HOLDEM_MAX_RAISES && maxTo > cur;
+
+            document.getElementById('hd-start-area').classList.add('hidden');
+            document.getElementById('hd-action-area').classList.remove('hidden');
+
+            const callBtn = document.getElementById('hd-call-btn');
+            callBtn.innerText = toCall <= 0 ? '체크' : (toCall >= money ? `올인 콜 ${toCall.toLocaleString()}$` : `콜 ${toCall.toLocaleString()}$`);
+            callBtn.disabled = false;
+            document.getElementById('hd-fold-btn').disabled = false;
+
+            const verb = cur === 0 ? '베팅' : '레이즈';
+            document.getElementById('hd-raise-btn').innerText = verb;
+            document.getElementById('hd-raise-btn').disabled = !canRaise;
+            hdRaiseInputEl.disabled = !canRaise;
+            hdRaiseInputEl.value = String(minTo);
+
+            const allinBtn = document.getElementById('hd-allin-btn');
+            allinBtn.innerText = `올인 ${maxTo.toLocaleString()}$`;
+            allinBtn.disabled = !canRaise;
+
+            document.getElementById('hd-raise-hint').innerText = canRaise
+                ? `${verb} 총액 ${minTo.toLocaleString()}$ ~ ${maxTo.toLocaleString()}$ (${GAME_CONFIG.BET_UNIT}$ 단위, 올인은 ${maxTo.toLocaleString()}$) · 이번 라운드 레이즈 ${hdRaisesThisStreet}/${GAME_CONFIG.HOLDEM_MAX_RAISES}회`
+                : (maxTo <= cur ? '더 올릴 칩이 없어요. 콜하거나 폴드하세요.' : `이번 라운드 레이즈 한도(${GAME_CONFIG.HOLDEM_MAX_RAISES}회)에 도달했어요.`);
+        }
+
+        // 내 차례가 아닐 때 행동 버튼 잠금
+        function hdLockPlayerActions() {
+            ['hd-raise-btn', 'hd-fold-btn', 'hd-call-btn', 'hd-allin-btn'].forEach(id => {
+                document.getElementById(id).disabled = true;
+            });
+            hdRaiseInputEl.disabled = true;
+        }
+
+        // 홀덤 모달을 열 때 화면 초기화
+        function initHoldemModal() {
+            if (hdInProgress) return;
+            hdPlayerHole = [];
+            hdOppHole = [];
+            hdBoard = [];
+            hdPot = 0;
+            hdStreet = 'idle';
+            hdStreetBet = { player: 0, opp: 0 };
+            hdTotalIn = { player: 0, opp: 0 };
+            hdNotes = { player: '', opp: '' };
+            hdOppHidden = true;
+            hdToAct = null;
+            hdRender();
+            document.getElementById('hd-start-area').classList.remove('hidden');
+            document.getElementById('hd-action-area').classList.add('hidden');
+            document.getElementById('hd-rule-text').innerText =
+                `노리밋 · 블라인드 ${GAME_CONFIG.HOLDEM_SMALL_BLIND}/${GAME_CONFIG.HOLDEM_BIG_BLIND}$ · 상대 ${HD_OPP_NAME} · 한 핸드 = 한 판`;
+            hdSetMessage(`딜을 누르면 새 핸드가 시작돼요! (최소 소지금 ${GAME_CONFIG.HOLDEM_BIG_BLIND}$)`);
+        }
+
+        // ---------- 핸드 진행 ----------
+        function dealHoldem() {
+            if (hdInProgress || isTransitioning || isDayEnding) return;
+            const sb = GAME_CONFIG.HOLDEM_SMALL_BLIND, bb = GAME_CONFIG.HOLDEM_BIG_BLIND;
+            if (money < bb) {
+                hdSetMessage(`⚠️ 소지금이 빅 블라인드(${bb}$)보다 적어서 홀덤을 할 수 없어요!`);
+                return;
+            }
+
+            hdInProgress = true;
+            hdButton = hdButton === 'player' ? 'opp' : 'player';   // 핸드마다 버튼 교대
+            hdOppStack = money;                                    // 박은찬도 같은 칩으로 시작 (유효 스택)
+            hdPot = 0;
+            hdTotalIn = { player: 0, opp: 0 };
+            hdStreetBet = { player: 0, opp: 0 };
+            hdBoard = [];
+            hdOppHidden = true;
+            hdNotes = { player: '', opp: '' };
+            hdPlayerActs = [];
+            hdDeck = bjCreateDeck();
+            hdPlayerHole = [hdDeck.pop(), hdDeck.pop()];
+            hdOppHole = [hdDeck.pop(), hdDeck.pop()];
+            [0, 0.12, 0.24, 0.36].forEach(d => SFX.play('card', d));   // 홀 카드를 나눠주는 소리
+
+            const small = hdButton, big = hdButton === 'player' ? 'opp' : 'player';
+            hdPut(small, sb);
+            hdPut(big, bb);
+            SFX.play('chip', 0.5);   // 블라인드
+            hdNotes[small] = `SB ${sb}$`;
+            hdNotes[big] = `BB ${bb}$`;
+
+            hdStreet = 'preflop';
+            hdLastRaise = bb;
+            hdRaisesThisStreet = 0;
+            hdActed = { player: false, opp: false };
+            hdToAct = small;                                       // 프리플랍은 버튼(스몰 블라인드)이 먼저 행동
+            hdRender();
+            hdNextTurn();
+        }
+
+        function hdNextTurn() {
+            if (!hdInProgress) return;
+            if (hdToAct === 'player') {
+                SFX.play('turn');
+                hdSetMessage(hdCur() - hdStreetBet.player > 0 ? '내 차례예요! 폴드, 콜, 레이즈 중에서 고르세요.' : '내 차례예요! 체크하거나 베팅하세요.');
+                hdShowPlayerActions();
+            } else if (hdToAct === 'opp') {
+                hdLockPlayerActions();
+                document.getElementById('hd-start-area').classList.add('hidden');
+                document.getElementById('hd-action-area').classList.remove('hidden');
+                hdSetMessage(`${HD_OPP_NAME}가 생각하는 중...`);
+                const runId = hdRunId;
+                hdDelay(() => hdApply('opp', hdOppDecide()), 800, runId);
+            }
+        }
+
+        // ==========================================
+        // 박은찬 AI (강화판)
+        //  1) 범위 읽기: 플레이어가 이번 핸드에서 한 행동(체크/콜/베팅·레이즈 크기)으로 플레이어가 가진 패의 범위를 좁혀서 승률을 계산
+        //  2) 성향 학습: 플레이어의 공격성과 베팅에 대한 폴드 빈도를 학습해서 허세 빈도와 콜 기준을 조절
+        //  3) 상황 판단: 포지션, 팟 오즈, 이미 많이 건 경우(팟 커밋), 베팅 크기를 고려해 폴드/콜/레이즈를 선택
+        // ==========================================
+
+        // 프리플랍 손 강도: 첸(Chen) 공식 점수 (높을수록 강한 시작 패)
+        function hdChenScore(c1, c2) {
+            const r1 = (c1 >> 2) + 2, r2 = (c2 >> 2) + 2;
+            const hi = Math.max(r1, r2), lo = Math.min(r1, r2);
+            const pts = (r) => r === 14 ? 10 : r === 13 ? 8 : r === 12 ? 7 : r === 11 ? 6 : r / 2;
+            if (r1 === r2) return Math.max(5, pts(hi) * 2);
+            let score = pts(hi);
+            if ((c1 & 3) === (c2 & 3)) score += 2;
+            const gap = hi - lo - 1;
+            score -= gap <= 0 ? 0 : gap === 1 ? 1 : gap === 2 ? 2 : gap === 3 ? 4 : 5;
+            if (gap <= 1 && hi < 12) score += 1;   // 스트레이트 가능성 보너스
+            return score;
+        }
+
+        // 아직 보이지 않는 카드로 만들 수 있는 모든 2장 조합과, 그 강도 백분위(q: 0 = 최약, 1 = 최강)
+        // 공용 카드가 3장 이상이면 현재 보드 기준 족보 점수, 프리플랍이면 첸 점수로 순위를 매김
+        function hdCandidates(unseen, boardNums) {
+            const list = [];
+            const withBoard = boardNums.length >= 3;
+            for (let i = 0; i < unseen.length; i++) {
+                for (let j = i + 1; j < unseen.length; j++) {
+                    const a = unseen[i], b = unseen[j];
+                    list.push({ a, b, q: 0, v: withBoard ? hdScore7([a, b].concat(boardNums)) : hdChenScore(a, b) });
+                }
+            }
+            const sorted = list.map(c => c.v).sort((x, y) => x - y);
+            const n = sorted.length;
+            const bound = (v, inclusive) => {   // v 미만(또는 이하)인 개수
+                let lo = 0, hi = n;
+                while (lo < hi) {
+                    const m = (lo + hi) >> 1;
+                    if (inclusive ? sorted[m] <= v : sorted[m] < v) lo = m + 1; else hi = m;
+                }
+                return lo;
+            };
+            list.forEach(c => { c.q = (bound(c.v, false) + bound(c.v, true)) / (2 * n); });   // 동점은 중간 순위
+            return list;
+        }
+
+        // 플레이어의 행동 기록으로 본 "이 강도(q)의 패를 가졌을 가능성" 가중치
+        //  - 베팅/레이즈: 크기가 클수록 강한 패 위주 (약한 패는 허세 몫으로 조금만 남김)
+        //  - 콜: 중간 이상 패 위주이지만 넓음 / 체크: 아주 강한 패는 덜 체크함
+        function hdRangeWeight(q, acts, tight, street) {
+            let w = 1;
+            for (let i = 0; i < acts.length; i++) {
+                const act = acts[i];
+                const decay = act.street === street ? 1 : 0.6;   // 지난 라운드의 행동은 영향이 조금 약함
+                if (act.type === 'raise') {
+                    const k = 1.2 + 2.0 * Math.min(act.frac, 1.5);   // 큰 베팅일수록 강한 패에 몰림
+                    w *= Math.pow(0.12 + Math.pow(q, k), tight * decay);   // tight가 작으면(항상 공격하는 플레이어) 거의 정보가 없는 것으로 취급
+                } else if (act.type === 'call') {
+                    w *= 0.35 + Math.pow(q, 0.8 * decay);
+                } else {
+                    w *= 1 - 0.45 * decay * Math.pow(q, 4);
+                }
+            }
+            return w;
+        }
+
+        // 내 패의 승률 두 가지: raw = 상대가 아무 패나 가졌다고 볼 때, range = 상대의 행동으로 좁힌 범위를 상대로 할 때
+        function hdEquities(holeNums, boardNums, simsRange, simsRaw, acts, tight, street, readRange) {
+            const used = new Set(holeNums.concat(boardNums));
+            const unseen = HD_FULL_DECK.filter(c => !used.has(c));
+            const cands = hdCandidates(unseen, boardNums);
+            const needBoard = 5 - boardNums.length;
+
+            const distribution = (useRange) => {
+                const cum = new Array(cands.length);
+                let tot = 0;
+                for (let i = 0; i < cands.length; i++) {
+                    tot += useRange ? hdRangeWeight(cands[i].q, acts, tight, street) : 1;
+                    cum[i] = tot;
+                }
+                return { cum, tot };
+            };
+            const simulate = (dist, sims) => {
+                let total = 0;
+                for (let t = 0; t < sims; t++) {
+                    const r = Math.random() * dist.tot;
+                    let lo = 0, hi = dist.cum.length - 1;
+                    while (lo < hi) {
+                        const m = (lo + hi) >> 1;
+                        if (dist.cum[m] >= r) hi = m; else lo = m + 1;
+                    }
+                    const cand = cands[lo];
+                    const drawn = [];
+                    while (drawn.length < needBoard) {
+                        const c = unseen[Math.floor(Math.random() * unseen.length)];
+                        if (c !== cand.a && c !== cand.b && drawn.indexOf(c) < 0) drawn.push(c);
+                    }
+                    const fullBoard = boardNums.concat(drawn);
+                    const mine = hdScore7(holeNums.concat(fullBoard));
+                    const theirs = hdScore7([cand.a, cand.b].concat(fullBoard));
+                    total += mine > theirs ? 1 : (mine === theirs ? 0.5 : 0);
+                }
+                return total / sims;
+            };
+
+            const raw = simulate(distribution(false), simsRaw);
+            const range = readRange && acts.length > 0 ? simulate(distribution(true), simsRange) : raw;
+            return { raw, range };
+        }
+
+        // 플레이어의 행동을 기록 (범위 읽기와 성향 학습에 사용). cur = 행동 직전의 현재 베팅액
+        function hdRecordPlayerAction(action, cur) {
+            const toCall = cur - hdStreetBet.player;
+            hdProfile.acts += 1;
+            if (toCall > 0) {
+                hdProfile.faced += 1;
+                if (action.type === 'fold') hdProfile.folds += 1;
+            }
+            if (action.type === 'raise') {
+                hdProfile.aggr += 1;
+                hdPlayerActs.push({ street: hdStreet, type: 'raise', frac: Math.max(0, action.to - cur) / Math.max(hdPot, GAME_CONFIG.HOLDEM_BIG_BLIND) });
+            } else if (action.type === 'call') {
+                hdPlayerActs.push({ street: hdStreet, type: toCall > 0 ? 'call' : 'check', frac: 0 });
+            }
+        }
+
+        // 박은찬의 행동 결정: { type: 'fold' | 'call' | 'raise', to }  (call은 체크 포함)
+        function hdOppDecide() {
+            const C = GAME_CONFIG, bb = C.HOLDEM_BIG_BLIND;
+            const cur = hdCur();
+            const toCall = cur - hdStreetBet.opp;
+            const stack = hdOppStack;
+            const allInTo = hdStreetBet.opp + stack;
+            const minRaiseTo = cur + Math.max(hdLastRaise, bb);
+            const raiseOption = hdRaisesThisStreet < C.HOLDEM_MAX_RAISES && allInTo > cur;
+            const inPosition = hdButton === 'opp';   // 헤즈업: 버튼이 플랍 이후 마지막에 행동
+            const pot = hdPot;
+            const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+            // 플레이어 성향 (표본이 적으면 평균값 쪽으로 보정)
+            const aggr = C.HOLDEM_AI_ADAPT ? (hdProfile.aggr + 1.5) / (hdProfile.acts + 5) : 0.3;           // 공격 비율
+            const foldRate = C.HOLDEM_AI_ADAPT ? (hdProfile.folds + 2) / (hdProfile.faced + 4) : 0.4;      // 베팅에 폴드하는 비율
+            // 공격 비율이 낮은 플레이어의 베팅은 강한 패로, 거의 매번 공격하는 플레이어의 베팅은 별 정보가 없다고 해석
+            const tight = clamp((0.62 - aggr) / 0.32, 0.1, 1.4);
+            const foldMult = clamp(foldRate / 0.4, 0.5, 2.0);          // 자주 폴드하는 플레이어에겐 허세를 더 많이
+
+            const eqs = hdEquities(hdOppHole.map(hdNum), hdBoard.map(hdNum), C.HOLDEM_AI_SIMS, Math.round(C.HOLDEM_AI_SIMS / 2),
+                                   hdPlayerActs, tight, hdStreet, C.HOLDEM_AI_READ_RANGE);
+            const eq = eqs.range, raw = eqs.raw;
+            const r = Math.random();
+            const jitter = () => (Math.random() - 0.5) * 0.2;   // 베팅 크기에 약간의 무작위성 (패턴을 읽히지 않도록)
+
+            // 팟의 일정 비율로 레이즈 (10$ 단위). 남는 칩이 적으면 올인
+            const makeRaise = (frac) => {
+                let to = cur + Math.round((pot + toCall) * Math.max(0.2, frac) / C.BET_UNIT) * C.BET_UNIT;
+                to = Math.max(to, minRaiseTo);
+                if (to >= allInTo || allInTo - to < bb) to = allInTo;
+                return { type: 'raise', to };
+            };
+            const check = { type: 'call' };
+            const bluffBase = C.HOLDEM_AI_BLUFF * foldMult * (inPosition ? 1 : 0.75) * (hdStreet === 'river' ? 0.8 : 1);
+
+            // ----- 체크할 수 있는 상황 (베팅 or 체크) -----
+            if (toCall === 0) {
+                if (!raiseOption) return check;
+                if (eq > 0.72) return r < 0.85 ? makeRaise(0.5 + (eq - 0.72) * 1.6 + jitter()) : check;   // 강한 패: 밸류 베팅 (가끔 슬로우 플레이)
+                if (eq > 0.58) return r < 0.55 ? makeRaise(0.33 + jitter()) : check;                        // 중간 패: 작은 베팅
+                if (eq < 0.42 && r < bluffBase * (raw > 0.3 ? 1.6 : 1)) return makeRaise(0.5 + Math.random() * 0.25);   // 허세 / 드로우 세미블러프
+                return check;
+            }
+
+            // ----- 프리플랍에서 스몰 블라인드로 처음 행동 (림프 or 오픈 레이즈) -----
+            if (hdStreet === 'preflop' && hdRaisesThisStreet === 0 && raiseOption) {
+                if (eq > 0.62 && r < 0.85) return makeRaise(0.75 + jitter());
+                if (eq > 0.52 && r < 0.45) return makeRaise(0.6 + jitter());
+            }
+
+            // ----- 베팅/레이즈를 마주한 상황 -----
+            const potBefore = Math.max(pot - toCall, 1);
+            const betFrac = toCall / potBefore;                 // 상대 베팅 크기 (팟 대비)
+            const potOdds = toCall / (pot + toCall);            // 콜하려면 필요한 최소 승률
+            const margin = betFrac <= 0.4 ? 0 : (betFrac >= 1 ? 0.05 : 0.03);   // 작은 베팅은 넓게 방어, 큰 베팅은 조금 더 보수적으로
+            const committed = hdTotalIn.opp / (hdTotalIn.opp + stack);          // 이미 건 칩 비율 (팟 커밋)
+
+            if (raiseOption && eq > 0.80 && r < 0.70) return makeRaise(0.7 + Math.random() * 0.4);   // 아주 강하면 레이즈
+            if (raiseOption && eq > 0.62 && r < 0.12) return makeRaise(0.6);                          // 강한 패의 일부는 밸류 레이즈로 섞음
+            if (raiseOption && hdStreet !== 'river' && raw > 0.30 && raw < 0.50 && r < 0.07 * foldMult) return makeRaise(0.7);   // 세미블러프 레이즈
+            if (eq >= potOdds + margin) return check;                                                  // 팟 오즈가 맞으면 콜
+            if (committed > 0.35 && eq >= potOdds - 0.03) return check;                                // 이미 많이 걸었으면 조금 더 넓게 콜
+            if (raiseOption && r < bluffBase * 0.4) return makeRaise(0.75);                            // 가끔 허세 레이즈
+            return { type: 'fold' };
+        }
+
+        // 한 사람의 행동을 적용: { type: 'fold' | 'call' | 'raise', to }
+        function hdApply(who, action) {
+            const other = who === 'player' ? 'opp' : 'player';
+            const cur = hdCur();
+            hdToAct = null;
+            hdLockPlayerActions();
+            if (who === 'player') hdRecordPlayerAction(action, cur);   // 박은찬이 읽을 수 있게 기록
+
+            if (action.type === 'fold') {
+                hdNotes[who] = '폴드';
+                SFX.play('fold');
+                hdRender();
+                hdFinishByFold(who);
+                return;
+            }
+
+            if (action.type === 'call') {
+                const paid = hdPut(who, cur - hdStreetBet[who]);
+                SFX.play(paid > 0 ? 'chip' : 'check');
+                hdActed[who] = true;
+                hdNotes[who] = paid > 0 ? (hdStack(who) === 0 ? `올인 콜 ${paid.toLocaleString()}$` : `콜 ${paid.toLocaleString()}$`) : '체크';
+            } else {
+                const to = Math.min(action.to, hdStreetBet[who] + hdStack(who));
+                const increment = to - cur;
+                hdPut(who, to - hdStreetBet[who]);
+                SFX.play(hdStack(who) === 0 ? 'bigChip' : 'chip');
+                if (increment >= hdLastRaise) hdLastRaise = increment;   // 정식 레이즈면 최소 레이즈 폭 갱신
+                hdRaisesThisStreet += 1;
+                hdActed[who] = true;
+                hdActed[other] = false;
+                hdNotes[who] = hdStack(who) === 0 ? `올인 ${to.toLocaleString()}$`
+                             : (cur === 0 ? `베팅 ${to.toLocaleString()}$` : `레이즈 → ${to.toLocaleString()}$`);
+            }
+            hdRender();
+
+            // 라운드 종료 판정: 양쪽 베팅액이 같고, (둘 다 행동했거나 한쪽이 더 행동할 수 없을 때)
+            const equal = hdStreetBet.player === hdStreetBet.opp;
+            const someoneAllIn = hdStack('player') === 0 || hdStack('opp') === 0;
+            if (equal && ((hdActed.player && hdActed.opp) || someoneAllIn)) {
+                hdEndStreet();
+                return;
+            }
+            if (hdStack(other) === 0) {   // 상대가 올인이라 더 행동할 수 없음
+                hdEndStreet();
+                return;
+            }
+            hdToAct = other;
+            hdNextTurn();
+        }
+
+        // 라운드 종료: 다음 카드 공개 또는 쇼다운
+        function hdEndStreet() {
+            const runId = hdRunId;
+            if (hdStreet === 'river') {
+                hdDelay(hdShowdown, 800, runId);
+                return;
+            }
+            const allIn = hdStack('player') === 0 || hdStack('opp') === 0;
+            const next = { preflop: 'flop', flop: 'turn', turn: 'river' }[hdStreet];
+            hdSetMessage(allIn ? '올인! 남은 카드를 공개합니다...' : '다음 카드를 공개합니다...');
+            hdDelay(() => {
+                const count = next === 'flop' ? 3 : 1;
+                for (let i = 0; i < count; i++) {
+                    hdBoard.push(hdDeck.pop());
+                    SFX.play('card', i * 0.12);   // 공용 카드 공개
+                }
+                hdStreet = next;
+                hdStreetBet = { player: 0, opp: 0 };
+                hdActed = { player: false, opp: false };
+                hdLastRaise = GAME_CONFIG.HOLDEM_BIG_BLIND;
+                hdRaisesThisStreet = 0;
+                hdNotes = { player: '', opp: '' };
+                hdRender();
+                if (allIn) {
+                    hdEndStreet();   // 더 이상 베팅할 수 없으니 계속 공개
+                } else {
+                    hdToAct = hdButton === 'player' ? 'opp' : 'player';   // 플랍 이후는 버튼이 아닌 쪽이 먼저
+                    hdNextTurn();
+                }
+            }, allIn ? 1000 : 600, runId);
+        }
+
+        function hdFinishByFold(folder) {
+            const winner = folder === 'player' ? 'opp' : 'player';
+            hdSettle(winner === 'player' ? 'win' : 'lose',
+                     folder === 'player' ? '폴드했어요.' : `${HD_OPP_NAME}가 폴드했어요!`);
+        }
+
+        function hdShowdown() {
+            hdStreet = 'showdown';
+            hdOppHidden = false;
+            SFX.play('card');
+            hdRender();
+            const ps = hdScore7(hdPlayerHole.concat(hdBoard).map(hdNum));
+            const os = hdScore7(hdOppHole.concat(hdBoard).map(hdNum));
+            const detail = `나: ${hdHandName(ps)} vs ${HD_OPP_NAME}: ${hdHandName(os)}`;
+            hdSettle(ps > os ? 'win' : ps < os ? 'lose' : 'split', detail);
+        }
+
+        // 정산: outcome = 'win' | 'lose' | 'split'
+        function hdSettle(outcome, note) {
+            const pot = hdPot;
+            let payout = 0;
+            if (outcome === 'win') payout = pot;
+            else if (outcome === 'split') payout = Math.floor(pot / 2);
+            if (payout > 0) updateMoney(money + payout);
+            const net = payout - hdTotalIn.player;
+
+            let msg;
+            if (outcome === 'win') msg = `🎉 ${note} 팟 ${pot.toLocaleString()}$ 획득! 순이익 +${net.toLocaleString()}$`;
+            else if (outcome === 'split') msg = `🤝 ${note} 무승부, 팟을 나눠요 (${net >= 0 ? '+' : ''}${net.toLocaleString()}$)`;
+            else msg = `💸 ${note} -${hdTotalIn.player.toLocaleString()}$`;
+            hdSetMessage(msg);
+            SFX.play(outcome === 'win' ? 'win' : outcome === 'split' ? 'push' : 'lose', 0.15);
+
+            hdStreet = 'done';
+            hdToAct = null;
+            hdInProgress = false;
+            hdRender();
+            hdLockPlayerActions();
+            document.getElementById('hd-action-area').classList.add('hidden');
+            document.getElementById('hd-start-area').classList.remove('hidden');
+
+            // 최소 베팅 금액도 걸 수 없으면 파산: 결과를 1초 보여준 뒤 게임오버 (판수는 올리지 않음)
+            if (money < GAME_CONFIG.MIN_BET) {
+                isDayEnding = true;
+                setTimeout(() => {
+                    showGameOver("소지금이 모두 소진되어 파산했습니다.");
+                }, 1000);
+                return;
+            }
+            recordGamePlay();   // 한 핸드 = 하루 게임 횟수 +1
+        }
+
+        // ---------- 플레이어 행동 ----------
+        function hdCanPlayerAct() {
+            return hdInProgress && hdToAct === 'player' && hdStreet !== 'idle' && hdStreet !== 'showdown' && hdStreet !== 'done';
+        }
+
+        function hdPlayerFold() {
+            if (!hdCanPlayerAct()) return;
+            hdApply('player', { type: 'fold' });
+        }
+
+        function hdPlayerCall() {
+            if (!hdCanPlayerAct()) return;
+            hdApply('player', { type: 'call' });
+        }
+
+        function hdPlayerRaise() {
+            if (!hdCanPlayerAct()) return;
+            const cur = hdCur();
+            const maxTo = hdStreetBet.player + money;
+            const minTo = Math.min(hdMinRaiseTo(), maxTo);
+            if (hdRaisesThisStreet >= GAME_CONFIG.HOLDEM_MAX_RAISES || maxTo <= cur) {
+                hdSetMessage('⚠️ 더 이상 레이즈할 수 없어요!');
+                return;
+            }
+            const raw = hdRaiseInputEl.value.trim();
+            let amount = parseInt(raw, 10);
+            if (raw === '' || isNaN(amount)) {
+                hdSetMessage('⚠️ 올릴 금액을 입력하세요!');
+                return;
+            }
+            if (amount >= maxTo) {
+                amount = maxTo;   // 가진 칩 이상을 적으면 올인
+            } else {
+                if (amount % GAME_CONFIG.BET_UNIT !== 0) {
+                    hdSetMessage(`⚠️ ${GAME_CONFIG.BET_UNIT}$ 단위로만 입력할 수 있어요!`);
+                    return;
+                }
+                if (amount < minTo) {
+                    hdSetMessage(`⚠️ 최소 ${minTo.toLocaleString()}$ 이상으로 올려야 해요!`);
+                    return;
+                }
+            }
+            hdApply('player', { type: 'raise', to: amount });
+        }
+
+        function hdPlayerAllIn() {
+            if (!hdCanPlayerAct()) return;
+            const cur = hdCur();
+            const maxTo = hdStreetBet.player + money;
+            if (hdRaisesThisStreet >= GAME_CONFIG.HOLDEM_MAX_RAISES || maxTo <= cur) {
+                hdSetMessage('⚠️ 이번 라운드는 더 올릴 수 없어요. 콜하거나 폴드하세요.');
+                return;
+            }
+            hdApply('player', { type: 'raise', to: maxTo });
+        }
+
+        // ==========================================
+        // [기능 5] 가위바위보 미니게임 로직
+        // ==========================================
+        const rpsSymbols = {
+            'scissors': '✌️',
+            'rock': '✊',
+            'paper': '✋'
+        };
+
+        // ==========================================
+        // 박은찬 AI: 플레이어의 가위바위보 패턴 분석
+        // ==========================================
+        const RPS_MOVES = ['scissors', 'rock', 'paper'];
+        const RPS_BEATS = { scissors: 'rock', rock: 'paper', paper: 'scissors' }; // 키로 준 손을 이기는 손
+
+        // 플레이어 기준 결과 ('win' | 'lose' | 'draw')
+        function getRpsResult(playerMove, aiMove) {
+            if (playerMove === aiMove) return 'draw';
+            return RPS_BEATS[aiMove] === playerMove ? 'win' : 'lose';
+        }
+
+        // 한 판이 끝날 때마다 플레이어의 손과 결과를 기록
+        function recordRpsRound(move, result) {
+            rpsHistory.push({ move, result });
+            if (rpsHistory.length > 100) rpsHistory.shift(); // 오래된 기록은 버림
+        }
+
+        // 플레이어가 다음에 낼 손을 예측 (기록이 부족하면 null)
+        function predictPlayerMove() {
+            const n = rpsHistory.length;
+            if (n < GAME_CONFIG.RPS_AI_MIN_ROUNDS) return null;
+
+            // 분석 모델 4종: 각 모델은 "직전 상황"을 키로 만들고, 같은 상황 뒤에 낸 손을 센다
+            const models = [
+                { weight: 1,   key: (i) => 'all' },                                                              // 전체 손 빈도
+                { weight: 1.5, key: (i) => i >= 1 ? rpsHistory[i - 1].move : null },                              // 직전에 낸 손 다음
+                { weight: 2,   key: (i) => i >= 2 ? rpsHistory[i - 2].move + '>' + rpsHistory[i - 1].move : null }, // 직전 두 손 다음
+                { weight: 2,   key: (i) => i >= 1 ? rpsHistory[i - 1].move + ':' + rpsHistory[i - 1].result : null } // 직전 손과 결과 다음 (이기면 유지/지면 변경 같은 버릇)
+            ];
+
+            const scores = { scissors: 0, rock: 0, paper: 0 };
+            models.forEach(model => {
+                const currentKey = model.key(n);
+                if (currentKey === null) return;
+
+                const counts = { scissors: 0, rock: 0, paper: 0 };
+                let total = 0;
+                for (let j = 0; j < n; j++) {
+                    if (model.key(j) === currentKey) {
+                        counts[rpsHistory[j].move] += 1;
+                        total += 1;
+                    }
+                }
+                if (total < 2) return; // 표본이 너무 적은 모델은 사용하지 않음
+
+                RPS_MOVES.forEach(m => {
+                    scores[m] += model.weight * (counts[m] + 1) / (total + 3); // 라플라스 보정
+                });
+            });
+
+            // 점수가 가장 높은 손을 선택 (동점이면 무작위)
+            const best = Math.max(...RPS_MOVES.map(m => scores[m]));
+            const candidates = RPS_MOVES.filter(m => scores[m] === best);
+            return candidates[Math.floor(Math.random() * candidates.length)];
+        }
+
+        // 박은찬이 낼 손 결정: 예측한 손을 이기는 손(확률 RPS_AI_STRENGTH), 아니면 무작위
+        function chooseEunchanMove() {
+            const predicted = predictPlayerMove();
+            if (predicted && Math.random() < GAME_CONFIG.RPS_AI_STRENGTH) {
+                console.log('[박은찬 AI] 예측:', predicted, '→ 대응');
+                return RPS_BEATS[predicted];
+            }
+            return RPS_MOVES[Math.floor(Math.random() * RPS_MOVES.length)];
+        }
+
+        function updateRpsModalUI() {
+            document.getElementById('rps-money').innerText = money.toLocaleString() + '$';
+            document.getElementById('rps-loss-count').innerText = todayRpsLossCount;
+            document.getElementById('rps-loss-limit').innerText = GAME_CONFIG.RPS_LOSS_LIMIT;
+
+            const buttonsContainer = document.getElementById('rps-buttons-container');
+            const msgEl = document.getElementById('rps-message');
+
+            if (todayRpsLossCount >= GAME_CONFIG.RPS_LOSS_LIMIT) {
+                // 한도 초과 시 버튼 비활성화 및 안내 문구
+                buttonsContainer.classList.add('opacity-50', 'pointer-events-none');
+                msgEl.innerText = "박은찬이 오늘은 그만하자고 합니다.";
+                msgEl.className = "text-sm font-bold text-red-400 min-h-[28px] mb-6 flex items-center justify-center";
+            } else {
+                buttonsContainer.classList.remove('opacity-50', 'pointer-events-none');
+                msgEl.innerText = "가위, 바위, 보 중 하나를 선택하세요!";
+                msgEl.className = "text-sm font-bold text-amber-300 min-h-[28px] mb-6 flex items-center justify-center";
+            }
+        }
+
+        function playRps(playerChoice) {
+            if (rpsAnimating || todayRpsLossCount >= GAME_CONFIG.RPS_LOSS_LIMIT || isTransitioning) return;
+
+            rpsAnimating = true;
+            const pBox = document.getElementById('player-rps-choice');
+            const eBox = document.getElementById('eunchan-rps-choice');
+            const msgEl = document.getElementById('rps-message');
+
+            // 1) 짧은 연출: "가위, 바위, 보!" 텍스트와 함께 손 모양 롤링
+            msgEl.innerText = "가위, 바위, 보!";
+            [0, 0.15, 0.3].forEach(d => SFX.play('rpsBeat', d));
+            pBox.innerText = '🌀';
+            eBox.innerText = '🌀';
+
+            setTimeout(() => {
+                // 박은찬 선택 (플레이어의 패턴을 분석해서 대응, 일부는 무작위)
+                const eunchanChoice = chooseEunchanMove();
+                const roundResult = getRpsResult(playerChoice, eunchanChoice);
+
+                // 양쪽 손 모양 동시 공개
+                pBox.innerText = rpsSymbols[playerChoice];
+                eBox.innerText = rpsSymbols[eunchanChoice];
+
+                // 승무패 판정
+                if (playerChoice === eunchanChoice) {
+                    // 무승부
+                    msgEl.innerText = "무승부! (돈과 패배 횟수 변화 없음)";
+                    SFX.play('push');
+                    msgEl.className = "text-sm font-bold text-slate-300 min-h-[28px] mb-6 flex items-center justify-center";
+                } else if (
+                    (playerChoice === 'scissors' && eunchanChoice === 'paper') ||
+                    (playerChoice === 'rock' && eunchanChoice === 'scissors') ||
+                    (playerChoice === 'paper' && eunchanChoice === 'rock')
+                ) {
+                    // 승리: +20$ 지급 (플레이 판수에는 미포함)
+                    updateMoney(money + GAME_CONFIG.RPS_REWARD);
+                    msgEl.innerText = `승리! +${GAME_CONFIG.RPS_REWARD}$ 획득! 🎉`;
+                    SFX.play('win');
+                    msgEl.className = "text-sm font-bold text-emerald-400 min-h-[28px] mb-6 flex items-center justify-center";
+                } else {
+                    // 패배: 오늘 패배 횟수 +1
+                    todayRpsLossCount += 1;
+                    msgEl.innerText = `패배... (오늘 패배: ${todayRpsLossCount}/${GAME_CONFIG.RPS_LOSS_LIMIT}) 😢`;
+                    SFX.play('lose');
+                    msgEl.className = "text-sm font-bold text-red-400 min-h-[28px] mb-6 flex items-center justify-center";
+                }
+
+                recordRpsRound(playerChoice, roundResult); // 다음 판 분석을 위해 기록
+                updateRpsModalUI();
+                rpsAnimating = false;
+            }, 500);
+        }
+    </script>
+</body>
+</html>
